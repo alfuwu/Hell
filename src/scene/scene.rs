@@ -6,7 +6,7 @@ pub struct Scene {
     pub camera: Box<dyn Camera>
 }
 impl Scene {
-    pub fn new() -> Self { Self { objects: vec![], camera: Box::new(Camera3D::new(1.0)) } }
+    pub fn new(aspect: f32) -> Self { Self { objects: vec![], camera: Box::new(Camera3D::new(aspect)) } }
 
     pub fn add_object(&mut self, object: Object) { self.objects.push(object) }
 

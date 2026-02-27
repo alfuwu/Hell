@@ -16,7 +16,7 @@ impl Vector3f {
     pub const Z: Vector3f = Vector3f::new(0.0, 0.0, 1.0);
 
     pub const fn new(x: f32, y: f32, z: f32) -> Self { Self { x, y, z } }
-    pub const fn uniform(val: f32) -> Self { Self { x: val, y: val, z: val } }
+    pub const fn uniform(xyz: f32) -> Self { Self { x: xyz, y: xyz, z: xyz } }
     pub const fn zero() -> Self { Self { x: 0.0, y: 0.0, z: 0.0 } }
     pub const fn one() -> Self { Self { x: 1.0, y: 1.0, z: 1.0 } }
 

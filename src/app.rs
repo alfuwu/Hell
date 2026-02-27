@@ -22,6 +22,7 @@ use crate::rendering::renderer::Renderer;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
+use crate::util::noise::perlin::gradient_noise_2d::noise;
 use crate::util::vectors::Vector3f;
 
 const WIDTH: u32 = 800;
@@ -75,7 +76,7 @@ impl Application {
             delta_time: 0.0,
             elapsed_time: 0.0,
 
-            scene: Scene::new()
+            scene: Scene::new(WIDTH as f32 / HEIGHT as f32)
         };
 
         app
@@ -172,10 +173,10 @@ impl Application {
             self.scene.camera.translate(Vector3f::X * self.delta_time * 2.0);
         }
         if self.keyboard.is_pressed(KeyCode::Space) {
-            self.scene.camera.translate(Vector3f::Y * -self.delta_time * 2.0);
+            self.scene.camera.translate_abs(Vector3f::Y * -self.delta_time * 2.0);
         }
         if self.keyboard.is_pressed(KeyCode::ShiftLeft) {
-            self.scene.camera.translate(Vector3f::Y * self.delta_time * 2.0);
+            self.scene.camera.translate_abs(Vector3f::Y * self.delta_time * 2.0);
         }
         if self.keyboard.is_pressed(KeyCode::Escape) {
             self.mouse_locked = false;
@@ -255,26 +256,53 @@ impl ApplicationHandler for Application {
             },
         ).unwrap();
 
-        self.renderer = Some(Renderer::new(device, queues.next().unwrap(), swapchain, images, v));
+        let renderer= Renderer::new(device, queues.next().unwrap(), swapchain, images, v);
+
+        const GRID_SIZE: usize = 10;
+        let mut vertices: Vec<Vertex> = vec![Vertex::default(); (GRID_SIZE+1)*(GRID_SIZE+1)];
+
+        // generate vertex positions and UVs
+        for i in 0..=GRID_SIZE {
+            for j in 0..=GRID_SIZE {
+                let l = i as f32;
+                let t = j as f32;
+                let h = noise(l * 10.5, t * 10.5, 0);
+                let idx = i * (GRID_SIZE+1) + j;
+                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32)
+            }
+        }
+
+        let mut indices: Vec<usize> = vec![];
+
+        for i in 0..GRID_SIZE {
+            for j in 0..GRID_SIZE {
+                let tl = i * (GRID_SIZE+1) + j;
+                let tr = (i+1) * (GRID_SIZE+1) + j;
+                let bl = i * (GRID_SIZE+1) + (j+1);
+                let br = (i+1) * (GRID_SIZE+1) + (j+1);
+
+                // left triangle  |\
+                indices.push(tl); indices.push(bl); indices.push(br);
+                // right triangle \|
+                indices.push(tl); indices.push(br); indices.push(tr);
+            }
+        }
+
+        Vertex::calculate_normals(&mut vertices, &indices);
 
         self.scene.add_object(Object::new(
             Arc::new(Mesh::new(
-                self.renderer.as_ref().unwrap().mem_alloc.clone(),
-                vec![Vertex { position: [-0.5, -0.5, 0.0 ] }, Vertex { position: [ 0.0, 0.5, 0.0 ] }, Vertex { position: [ 0.5, -0.5, 0.0 ] }],
+                (&renderer).mem_alloc.clone(),
+                Vertex::flatten(&vertices, &indices),
+                None,
                 None
             )),
-            Vector3f::ZERO,
-            Vector3f::ZERO
+            Vector3f::new(-5.0, 1.0, -5.0),
+            Vector3f::new(f32::to_radians(90.0), 0.0, 0.0),
+            Vector3f::uniform(10.0)
         ));
-        self.scene.add_object(Object::new(
-            Arc::new(Mesh::new(
-                self.renderer.as_ref().unwrap().mem_alloc.clone(),
-                vec![Vertex { position: [-1.0, -1.0, -10.0 ] }, Vertex { position: [ -1.0, -0.5, -10.0 ] }, Vertex { position: [ -0.5, -0.5, -10.0 ] }],
-                None
-            )),
-            Vector3f::ZERO,
-            Vector3f::ZERO
-        ));
+
+        self.renderer = Some(renderer);
 
         println!("Window instantiated! :D");
     }
@@ -314,6 +342,28 @@ impl ApplicationHandler for Application {
                 }
             },
             WindowEvent::RedrawRequested => unsafe {
+                if self.window_resized || self.recreate_swapchain {
+                    self.recreate_swapchain = false;
+                    let renderer = self.renderer.as_mut().unwrap();
+
+                    let new_dims = self.window.as_ref().unwrap().surface_size();
+                    let (swapchain, images) = renderer.swapchain.recreate(SwapchainCreateInfo {
+                        image_extent: new_dims.into(),
+                        ..renderer.swapchain.create_info()
+                    }).expect("Failed to recreate swapchain");
+                    renderer.framebuffers = Renderer::get_framebuffers(&images, &renderer.render_pass, renderer.mem_alloc.clone());
+                    renderer.swapchain = swapchain;
+                    renderer.images = images;
+
+                    if self.window_resized {
+                        self.window_resized = false;
+
+                        self.viewport.as_mut().unwrap().extent = new_dims.into();
+                        self.scene.camera.set_aspect_ratio(new_dims.width as f32 / new_dims.height as f32);
+                        renderer.pipeline = Renderer::get_pipeline(&renderer.device, self.viewport.clone().unwrap(), &renderer.vs, &renderer.fs, &renderer.render_pass);
+                    }
+                }
+
                 // Redraw the application.
                 //
                 // It's preferable for applications that do not render continuously to render in
@@ -328,27 +378,6 @@ impl ApplicationHandler for Application {
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
                 self.window.as_ref().unwrap().request_redraw();
-                
-                if /*self.window_resized ||*/ self.recreate_swapchain {
-                    self.recreate_swapchain = false;
-                    let renderer = self.renderer.as_mut().unwrap();
-                    
-                    let new_dims = self.window.as_ref().unwrap().surface_size();
-                    let (swapchain, images) = renderer.swapchain.recreate(SwapchainCreateInfo {
-                        image_extent: new_dims.into(),
-                        ..renderer.swapchain.create_info()
-                    }).expect("Failed to recreate swapchain");
-                    renderer.framebuffers = Renderer::get_framebuffers(&images, &renderer.render_pass, renderer.mem_alloc.clone());
-                    renderer.swapchain = swapchain;
-                    renderer.images = images;
-
-                    if self.window_resized {
-                        self.window_resized = false;
-
-                        self.viewport.as_mut().unwrap().extent = new_dims.into();
-                        //renderer.pipeline = Renderer::get_pipeline(&renderer.device, self.viewport.clone().unwrap(), &renderer.vs, &renderer.fs, &renderer.render_pass);
-                    }
-                }
             },
             _ => ()
         }

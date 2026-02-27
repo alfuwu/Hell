@@ -17,7 +17,10 @@ pub trait Camera {
     }
 
     fn translate(&mut self, translation: Vector3f);
+    fn translate_abs(&mut self, translation: Vector3f);
     fn rotate(&mut self, yaw: f32, pitch: f32);
+    
+    fn set_aspect_ratio(&mut self, aspect: f32);
 }
 
 pub struct Camera2D {
@@ -57,7 +60,10 @@ impl Camera for Camera2D {
     fn translate(&mut self, translation: Vector3f) {
         self.position += translation;
     }
+    fn translate_abs(&mut self, translation: Vector3f) { self.translate(translation); }
     fn rotate(&mut self, yaw: f32, pitch: f32) { }
+    
+    fn set_aspect_ratio(&mut self, aspect: f32) { }
 }
 
 pub struct Camera3D {
@@ -88,7 +94,7 @@ impl Camera3D {
             fov: f32::to_radians(45.0),
             aspect,
             near: 0.1,
-            far: 100.0,
+            far: 100000.0,
         };
 
         cam.update_vectors();
@@ -125,6 +131,7 @@ impl Camera for Camera3D {
         self.position += self.up * translation.y;
         self.position += self.front * translation.z;
     }
+    fn translate_abs(&mut self, translation: Vector3f) { self.position += translation; }
     fn rotate(&mut self, yaw_offset: f32, pitch_offset: f32) {
         self.yaw += yaw_offset;
         self.pitch += pitch_offset;
@@ -133,6 +140,10 @@ impl Camera for Camera3D {
         self.pitch = self.pitch.clamp(-89.0, 89.0);
 
         self.update_vectors();
+    }
+
+    fn set_aspect_ratio(&mut self, aspect: f32) {
+        self.aspect = aspect;
     }
 }
 
@@ -155,7 +166,7 @@ impl OrbitalCamera3D {
             fov: f32::to_radians(45.0),
             aspect,
             near: 0.1,
-            far: 100.0,
+            far: 100000.0,
         }
     }
 }
@@ -167,6 +178,7 @@ impl Camera for OrbitalCamera3D {
         self.position += translation;
         self.target += translation;
     }
+    fn translate_abs(&mut self, translation: Vector3f) { self.position += translation; }
     fn rotate(&mut self, yaw: f32, pitch: f32) {
         let direction = self.position - self.target;
         let radius = direction.length();
@@ -185,5 +197,9 @@ impl Camera for OrbitalCamera3D {
         let z = radius * phi.sin() * theta.sin();
 
         self.position = self.target + Vector3f::new(x, y, z);
+    }
+
+    fn set_aspect_ratio(&mut self, aspect: f32) {
+        self.aspect = aspect;
     }
 }
