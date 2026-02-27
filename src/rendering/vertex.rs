@@ -4,8 +4,8 @@ use vulkano::pipeline::graphics::vertex_input::{Vertex as VulkanVertex, VertexBu
 #[derive(BufferContents, VulkanVertex)]
 #[repr(C)]
 pub struct Vertex {
-    #[format(R32G32_SFLOAT)]
-    pub position: [f32; 2]
+    #[format(R32G32B32_SFLOAT)]
+    pub position: [f32; 3]
 }
 
 pub mod vs {
@@ -14,11 +14,14 @@ pub mod vs {
         src: "
             #version 460
 
-            layout(location = 0) in vec2 position;
+            layout(set = 0, binding = 0) uniform Camera {
+                mat4 view_proj;
+            } camera;
+            layout(location = 0) in vec3 position;
             layout(location = 0) out vec4 v_position;
 
             void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
+                gl_Position = camera.view_proj * vec4(position, 1.0);
                 v_position = gl_Position;
             }
         ",
@@ -35,7 +38,7 @@ pub mod fs {
             layout(location = 0) out vec4 f_color;
 
             void main() {
-                f_color = vec4(v_position.x, v_position.y, 1.0, 1.0);
+                f_color = vec4(v_position.x, v_position.y, -v_position.x, 1.0);
             }
         ",
     }

@@ -6,7 +6,13 @@ pub struct Mouse {
     pub x: f64,
     pub y: f64,
     pub left: bool,
-    pub right: bool
+    pub right: bool,
+    pub middle: bool,
+    pub back: bool,
+    pub forward: bool
+}
+impl Mouse {
+    pub fn primary_button(&self) -> bool { self.left || self.right || self.middle }
 }
 
 #[derive(Clone, Default)]

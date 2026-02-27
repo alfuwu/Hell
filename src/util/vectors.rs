@@ -9,8 +9,11 @@ pub struct Vector3f {
     pub z: f32
 }
 impl Vector3f {
-    const ZERO: Vector3f = Vector3f::zero();
-    const ONE: Vector3f = Vector3f::one();
+    pub const ZERO: Vector3f = Vector3f::zero();
+    pub const ONE: Vector3f = Vector3f::one();
+    pub const X: Vector3f = Vector3f::new(1.0, 0.0, 0.0);
+    pub const Y: Vector3f = Vector3f::new(0.0, 1.0, 0.0);
+    pub const Z: Vector3f = Vector3f::new(0.0, 0.0, 1.0);
 
     pub const fn new(x: f32, y: f32, z: f32) -> Self { Self { x, y, z } }
     pub const fn uniform(val: f32) -> Self { Self { x: val, y: val, z: val } }
@@ -26,7 +29,7 @@ impl Vector3f {
     pub fn distance_squared(self, other: Self) -> f32 { (self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y) + (self.z - other.z) * (self.z - other.z) }
     pub fn dot(self, other: Self) -> f32 { self.x * other.x + self.y * other.y + self.z * other.z }
     pub fn angle(self, other: Self) -> f32 { Self::angle_between(self, other) } // in rads
-    pub fn cross_product(self, other: Self) -> Self { Self { x: self.y * other.z - other.y * self.z, y: self.z * other.x - other.z * self.x, z: self.x * other.y - other.x * self.y } }
+    pub fn cross(self, other: Self) -> Self { Self { x: self.y * other.z - other.y * self.z, y: self.z * other.x - other.z * self.x, z: self.x * other.y - other.x * self.y } }
     pub fn clamp(self, min: Self, max: Self) -> Self { Self { x: self.x.clamp(min.x, max.x), y: self.y.clamp(min.y, max.y), z: self.z.clamp(min.z, max.z) } }
     pub fn clamp_length(self, max_len: f32) -> Self { let len_sq = self.length_squared(); if len_sq > max_len * max_len { self * (max_len / len_sq.sqrt()) } else { self } }
     pub fn project_onto(self, other: Self) -> Self { other * (self.dot(other) / other.length_squared()) }

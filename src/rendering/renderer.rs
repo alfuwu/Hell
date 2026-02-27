@@ -1,0 +1,320 @@
+use std::sync::Arc;
+use vulkano::{
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+    device::{Device, Queue},
+    image::{view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator},
+    command_buffer::{
+        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo, CommandBufferAllocator},
+        AutoCommandBufferBuilder,
+        CommandBufferUsage,
+        RenderPassBeginInfo,
+        SubpassBeginInfo,
+        SubpassContents,
+        SubpassEndInfo
+    },
+    pipeline::{
+        graphics::{
+            vertex_input::{Vertex as VulkanVertex, VertexDefinition},
+            viewport::{Viewport, ViewportState},
+            color_blend::{ColorBlendAttachmentState, ColorBlendState},
+            depth_stencil::{DepthStencilState, DepthState},
+            input_assembly::InputAssemblyState,
+            multisample::MultisampleState,
+            rasterization::RasterizationState,
+            GraphicsPipelineCreateInfo
+        },
+        layout::PipelineDescriptorSetLayoutCreateInfo,
+        GraphicsPipeline,
+        PipelineLayout,
+        PipelineShaderStageCreateInfo,
+        PipelineBindPoint,
+        Pipeline
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    swapchain::{acquire_next_image, Swapchain, SwapchainPresentInfo},
+    descriptor_set::{allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo}, DescriptorSet, WriteDescriptorSet},
+    shader::ShaderModule,
+    format::Format,
+    sync::GpuFuture,
+    single_pass_renderpass,
+    VulkanError,
+    Validated
+};
+use crate::scene::scene::Scene;
+use crate::rendering::vertex::{fs, vs, Vertex};
+use crate::scene::camera::CameraUBO;
+
+pub struct Renderer {
+    pub device: Arc<Device>,
+    pub descriptor_alloc: Arc<StandardDescriptorSetAllocator>,
+    pub queue: Arc<Queue>,
+    pub mem_alloc: Arc<dyn MemoryAllocator>,
+    pub command_alloc: Arc<dyn CommandBufferAllocator>,
+
+    pub vs: Arc<ShaderModule>,
+    pub fs: Arc<ShaderModule>,
+
+    pub swapchain: Arc<Swapchain>,
+    pub images: Vec<Arc<Image>>,
+    pub render_pass: Arc<RenderPass>,
+    pub framebuffers: Vec<Arc<Framebuffer>>,
+    pub pipeline: Arc<GraphicsPipeline>
+}
+impl Renderer {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, swapchain: Arc<Swapchain>, images: Vec<Arc<Image>>, viewport: Viewport) -> Self {
+        let render_pass = Self::get_render_pass(&device, &swapchain);
+
+        let vs = vs::load(device.clone()).unwrap();
+        let fs = fs::load(device.clone()).unwrap();
+
+        let mem_alloc = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+        let renderer = Self {
+            device: device.clone(),
+            descriptor_alloc: Arc::new(StandardDescriptorSetAllocator::new(
+                device.clone(),
+                StandardDescriptorSetAllocatorCreateInfo::default()
+            )),
+            queue,
+            mem_alloc: mem_alloc.clone(),
+            command_alloc: Arc::new(StandardCommandBufferAllocator::new(
+                device.clone(),
+                StandardCommandBufferAllocatorCreateInfo::default()
+            )),
+            vs: vs.clone(),
+            fs: fs.clone(),
+            swapchain,
+            images: images.clone(),
+            render_pass: render_pass.clone(),
+            framebuffers: Self::get_framebuffers(&images, &render_pass.clone(), mem_alloc),
+            pipeline: Self::get_pipeline(&device, viewport, &vs, &fs, &render_pass),
+        };
+        renderer
+    }
+
+    pub(crate) fn get_render_pass(device: &Arc<Device>, swapchain: &Arc<Swapchain>) -> Arc<RenderPass> {
+        single_pass_renderpass!(
+            device.clone(),
+            attachments: {
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+                depth: {
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: { depth },
+            },
+        ).unwrap()
+    }
+
+    pub(crate) fn get_framebuffers(images: &Vec<Arc<Image>>, render_pass: &Arc<RenderPass>, mem_alloc: Arc<dyn MemoryAllocator>) -> Vec<Arc<Framebuffer>> {
+        images.iter().map(|image| {
+            let dimensions = image.extent();
+
+            let depth_image = Image::new(
+                mem_alloc.clone(),
+                ImageCreateInfo {
+                    format: Format::D16_UNORM,
+                    extent: dimensions,
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            ).unwrap();
+
+            let color_view = ImageView::new_default(image.clone()).unwrap();
+            let depth_view = ImageView::new_default(depth_image).unwrap();
+
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![color_view, depth_view],
+                    ..Default::default()
+                },
+            ).unwrap()
+        }).collect()
+    }
+
+    pub(crate) fn get_pipeline(
+        device: &Arc<Device>,
+        viewport: Viewport,
+        vs: &Arc<ShaderModule>,
+        fs: &Arc<ShaderModule>,
+        render_pass: &Arc<RenderPass>,
+    ) -> Arc<GraphicsPipeline> {
+        let vs = vs.entry_point("main").unwrap();
+        let fs = fs.entry_point("main").unwrap();
+
+        let vertex_input_state = Vertex::per_vertex()
+            .definition(&vs)
+            .unwrap();
+
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+
+        let layout = PipelineLayout::new(
+            device.clone(),
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        ).unwrap();
+
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState::default()),
+                viewport_state: Some(ViewportState {
+                    viewports: [viewport].into_iter().collect(),
+                    ..Default::default()
+                }),
+                depth_stencil_state: Some(DepthStencilState {
+                    depth: Some(DepthState::simple()),
+                    ..Default::default()
+                }),
+                rasterization_state: Some(RasterizationState::default()),
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        ).unwrap()
+    }
+
+    pub fn create_buffer_single<T>(&self, data: T) -> Subbuffer<T> where T : BufferContents {
+        Buffer::from_data(
+            self.mem_alloc.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            data
+        ).expect("Failed to allocate memory for buffer")
+    }
+
+    pub fn create_buffer<T, I>(&self, data: I) -> Subbuffer<[T]> where T : BufferContents, I: IntoIterator<Item = T>, I::IntoIter: ExactSizeIterator {
+        Buffer::from_iter(
+            self.mem_alloc.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::UNIFORM_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            data
+        ).expect("Failed to allocate memory for buffer")
+    }
+
+    pub unsafe fn draw(&mut self, scene: &Scene) -> bool {
+        let vp = scene.camera.view_projection();
+        let camera_data = CameraUBO {
+            view_proj: vp.to_cols_array_2d(),
+        };
+
+        let camera_buffer = self.create_buffer_single(camera_data);
+
+        let layout = self.pipeline.layout().set_layouts().get(0).unwrap().clone();
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_alloc.clone(),
+            layout,
+            [WriteDescriptorSet::buffer(0, camera_buffer.clone())],
+            []
+        ).unwrap();
+
+        let (image_index, suboptimal, acquire_future) =
+            match acquire_next_image(self.swapchain.clone(), None).map_err(Validated::unwrap) {
+                Ok(r) => r,
+                Err(VulkanError::OutOfDate) => return true,
+                Err(e) => panic!("Failed to acquire next image: {e}"),
+            };
+
+        let mut recreate_swapchain = suboptimal;
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.command_alloc.clone(),
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        ).unwrap();
+
+        let buffer = builder.begin_render_pass(
+            RenderPassBeginInfo {
+                clear_values: vec![
+                    Some([0.1, 0.1, 0.1, 1.0].into()), // color
+                    Some(1.0.into()),                  // depth
+                ],
+                ..RenderPassBeginInfo::framebuffer(
+                    self.framebuffers[image_index as usize].clone()
+                )
+            },
+            SubpassBeginInfo {
+                contents: SubpassContents::Inline,
+                ..Default::default()
+            },
+        ).unwrap();
+
+        unsafe {
+            for object in &scene.objects {
+                buffer
+                    .bind_pipeline_graphics(self.pipeline.clone()).unwrap()
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        self.pipeline.layout().clone(),
+                        0, // set number
+                        descriptor_set.clone(),
+                    ).unwrap()
+                    .bind_vertex_buffers(0, object.mesh.vertex_buffer.clone()).unwrap();
+                if let Some(idx_buffer) = object.mesh.index_buffer.clone() {
+                    buffer.bind_index_buffer(idx_buffer).unwrap();
+                }
+                buffer.draw(object.mesh.vertex_count, 1, 0, 0).unwrap();
+            }
+        }
+
+        buffer.end_render_pass(SubpassEndInfo::default()).unwrap();
+
+        let command_buffer = builder.build().unwrap();
+
+        let execution = acquire_future
+            .then_execute(self.queue.clone(), command_buffer).unwrap()
+            .then_swapchain_present(
+                self.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    image_index,
+                ),
+            )
+            .then_signal_fence_and_flush();
+
+        match execution.map_err(Validated::unwrap) {
+            Ok(future) => future.wait(None).unwrap(),
+            Err(VulkanError::OutOfDate) => recreate_swapchain = true,
+            Err(e) => println!("Failed to flush future: {e}")
+        }
+        recreate_swapchain
+    }
+}

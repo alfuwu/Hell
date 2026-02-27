@@ -2,76 +2,53 @@ use std::sync::Arc;
 use std::time::Instant;
 use winit::{
     application::ApplicationHandler,
-    event::{WindowEvent, DeviceEvent, DeviceId},
+    event::{WindowEvent, ButtonSource, MouseButton, DeviceEvent, DeviceId},
     event_loop::{ActiveEventLoop, EventLoop, ControlFlow},
-    window::{Window, WindowAttributes, WindowId},
-    keyboard::PhysicalKey::Code,
+    window::{Window, WindowAttributes, WindowId, CursorGrabMode},
+    keyboard::{PhysicalKey::Code, KeyCode},
     dpi::LogicalSize
 };
 use vulkano::{
     VulkanLibrary,
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     instance::{Instance, InstanceCreateInfo, InstanceCreateFlags},
-    device::{physical::{PhysicalDevice, PhysicalDeviceType}, Device, DeviceExtensions, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags},
-    image::{view::ImageView, Image, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator},
-    command_buffer::{
-        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-        AutoCommandBufferBuilder,
-        CommandBufferUsage,
-        RenderPassBeginInfo,
-        SubpassBeginInfo,
-        SubpassContents,
-        SubpassEndInfo
-    },
-    pipeline::{
-        graphics::{
-            vertex_input::{Vertex as VulkanVertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
-            color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            input_assembly::InputAssemblyState,
-            multisample::MultisampleState,
-            rasterization::RasterizationState,
-            GraphicsPipelineCreateInfo
-        },
-        layout::PipelineDescriptorSetLayoutCreateInfo,
-        GraphicsPipeline,
-        PipelineLayout,
-        PipelineShaderStageCreateInfo
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{acquire_next_image, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, Surface},
-    shader::ShaderModule,
-    sync::GpuFuture
+    device::{physical::{PhysicalDevice, PhysicalDeviceType}, Device, DeviceExtensions, DeviceCreateInfo, QueueCreateInfo, QueueFlags},
+    image::ImageUsage,
+    pipeline::graphics::viewport::Viewport,
+    swapchain::{Swapchain, SwapchainCreateInfo, Surface}
 };
 use crate::input::devices::{Keyboard, Mouse};
-use crate::util::dimensions::{fs, vs, Vertex};
+use crate::rendering::mesh::Mesh;
+use crate::rendering::renderer::Renderer;
+use crate::scene::object::Object;
+use crate::scene::scene::Scene;
+use crate::rendering::vertex::Vertex;
+use crate::util::vectors::Vector3f;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
 pub struct Application {
-    instance: Arc<Instance>,
-    device: Option<Arc<Device>>,
-    queue: Option<Arc<Queue>>,
-    mem_alloc: Option<Arc<dyn MemoryAllocator>>,
-    window: Option<Arc<Box<dyn Window>>>,
-    viewport: Option<Viewport>,
-    surface: Option<Arc<Surface>>,
-    swapchain: Option<Arc<Swapchain>>,
-    images: Option<Vec<Arc<Image>>>,
-    framebuffers: Vec<Arc<Framebuffer>>,
-    pipeline: Option<Arc<GraphicsPipeline>>,
-    vert_size: f32,
+    pub instance: Arc<Instance>,
+    pub window: Option<Arc<Box<dyn Window>>>,
+    pub viewport: Option<Viewport>,
+    pub surface: Option<Arc<Surface>>,
+    pub renderer: Option<Renderer>,
+    pub window_resized: bool,
+    pub recreate_swapchain: bool,
+    pub mouse_locked: bool,
 
     // user land
     pub mouse: Mouse,
+    pub last_mouse: Mouse,
     pub keyboard: Keyboard,
+    pub last_keyboard: Keyboard,
 
     pub start_time: Instant,
     pub last_frame: Instant,
     pub delta_time: f32,
     pub elapsed_time: f32,
+
+    pub scene: Scene,
 }
 impl Application {
     pub fn initialize(event_loop: &EventLoop) -> Self {
@@ -80,24 +57,25 @@ impl Application {
 
         let app = Self {
             instance,
-            device: None,
-            queue: None,
-            mem_alloc: None,
             window: None,
             viewport: None,
             surface: None,
-            swapchain: None,
-            images: None,
-            framebuffers: Vec::new(),
-            pipeline: None,
-            vert_size: 1.0,
+            renderer: None,
+            window_resized: false,
+            recreate_swapchain: false,
+            mouse_locked: true,
 
             mouse: Mouse::default(),
+            last_mouse: Mouse::default(),
             keyboard: Keyboard::default(),
+            last_keyboard: Keyboard::default(),
+
             start_time: now,
             last_frame: now,
             delta_time: 0.0,
-            elapsed_time: 0.0
+            elapsed_time: 0.0,
+
+            scene: Scene::new()
         };
 
         app
@@ -151,120 +129,6 @@ impl Application {
             .expect("No devices supporting Vulkan are available")
     }
 
-    fn get_render_pass(&self) -> Arc<RenderPass> {
-        vulkano::single_pass_renderpass!(
-            self.device.as_ref().unwrap().clone(),
-            attachments: {
-                color: {
-                    format: self.swapchain.as_ref().expect("Swapchain not instantiated").image_format(),
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {},
-            },
-        ).unwrap()
-    }
-
-    fn get_framebuffers(&self, render_pass: &Arc<RenderPass>) -> Vec<Arc<Framebuffer>> {
-        self.images.as_ref().expect("Images not collected; swapchain not instantiated").iter()
-            .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
-                Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![view],
-                        ..Default::default()
-                    },
-                ).unwrap()
-            })
-            .collect::<Vec<_>>()
-    }
-
-    fn get_pipeline(&self,
-        vs: Arc<ShaderModule>,
-        fs: Arc<ShaderModule>,
-        render_pass: Arc<RenderPass>,
-    ) -> Arc<GraphicsPipeline> {
-        let device = self.device.as_ref().expect("Device not connected");
-
-        let vs = vs.entry_point("main").unwrap();
-        let fs = fs.entry_point("main").unwrap();
-
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs)
-            .unwrap();
-
-        let stages = [
-            PipelineShaderStageCreateInfo::new(vs),
-            PipelineShaderStageCreateInfo::new(fs),
-        ];
-
-        let layout = PipelineLayout::new(
-            device.clone(),
-            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                .into_pipeline_layout_create_info(device.clone())
-                .unwrap(),
-        ).unwrap();
-
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
-        GraphicsPipeline::new(
-            device.clone(),
-            None,
-            GraphicsPipelineCreateInfo {
-                stages: stages.into_iter().collect(),
-                vertex_input_state: Some(vertex_input_state),
-                input_assembly_state: Some(InputAssemblyState::default()),
-                viewport_state: Some(ViewportState {
-                    viewports: [self.viewport.clone().expect("Viewport not instantiated; window not instantiated")].into_iter().collect(),
-                    ..Default::default()
-                }),
-                rasterization_state: Some(RasterizationState::default()),
-                multisample_state: Some(MultisampleState::default()),
-                color_blend_state: Some(ColorBlendState::with_attachment_states(
-                    subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
-                )),
-                subpass: Some(subpass.into()),
-                ..GraphicsPipelineCreateInfo::layout(layout)
-            },
-        ).unwrap()
-    }
-
-    pub fn create_buffer_single<T>(&self, data: T) -> Subbuffer<T> where T : BufferContents {
-        Buffer::from_data(
-            self.mem_alloc.as_ref().expect("Memory allocator not instantiated yet").clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            data
-        ).expect("Failed to allocate memory for buffer")
-    }
-
-    pub fn create_buffer<T, I>(&self, data: I) -> Subbuffer<[T]> where T : BufferContents, I: IntoIterator<Item = T>, I::IntoIter: ExactSizeIterator {
-        Buffer::from_iter(
-            self.mem_alloc.as_ref().expect("Memory allocator not instantiated yet").clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            data
-        ).expect("Failed to allocate memory for buffer")
-    }
-
     pub fn init_event_loop() -> EventLoop {
         let event_loop = EventLoop::new().expect("Failed to initialize events loop");
         event_loop.set_control_flow(ControlFlow::Poll);
@@ -275,85 +139,53 @@ impl Application {
         event_loop.run_app(self).expect("Failed to run app event loop");
     }
 
+    fn handle_mouse_lock(&self) {
+        self.window.as_ref().unwrap().set_cursor_grab(if self.mouse_locked { CursorGrabMode::Locked } else { CursorGrabMode::None })
+            .or_else(|_e| self.window.as_ref().unwrap().set_cursor_grab(CursorGrabMode::Confined))
+            .unwrap();
+        self.window.as_ref().unwrap().set_cursor_visible(!self.mouse_locked);
+    }
+
     unsafe fn draw(&mut self) {
         let now = Instant::now();
-        let elapsed = (now - self.last_frame).as_millis() as f32 * 1000.0;
+        let elapsed = (now - self.last_frame).as_millis() as f32 / 1000.0;
         self.delta_time = elapsed;
         self.elapsed_time += elapsed;
         self.last_frame = now;
 
-        let device = self.device.as_ref().unwrap();
-        let queue = self.queue.as_ref().unwrap();
-        let swapchain = self.swapchain.as_ref().unwrap();
-
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            StandardCommandBufferAllocatorCreateInfo::default(),
-        ));
-
-        self.vert_size = (self.elapsed_time / 1000000.0).sin();
-        let vertices = [
-            Vertex { position: [-0.5 * self.vert_size, -0.5 * self.vert_size] },
-            Vertex { position: [ 0.0,  0.5 * self.vert_size] },
-            Vertex { position: [ 0.5 * self.vert_size, -0.5 * self.vert_size] },
-        ];
-
-        let vertex_buffer = Buffer::from_iter(
-            self.mem_alloc.as_ref().unwrap().clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        ).unwrap();
-
-        let (image_index, suboptimal, acquire_future) =
-            acquire_next_image(swapchain.clone(), None).unwrap();
-
-        let mut builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator,
-            queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
-        ).unwrap();
-
         unsafe {
-            builder.begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: vec![Some([0.1, 0.1, 0.1, 1.0].into())],
-                    ..RenderPassBeginInfo::framebuffer(
-                        self.framebuffers[image_index as usize].clone()
-                    )
-                },
-                SubpassBeginInfo {
-                    contents: SubpassContents::Inline,
-                    ..Default::default()
-                },
-            ).unwrap()
-                .bind_pipeline_graphics(self.pipeline.clone().expect("Pipeline not initialized")).unwrap()
-                .bind_vertex_buffers(0, vertex_buffer.clone()).unwrap()
-                .draw(3, 1, 0, 0).unwrap()
-                .end_render_pass(SubpassEndInfo::default()).unwrap();
+            if self.renderer.as_mut().unwrap().draw(&self.scene) {
+                self.recreate_swapchain = true;
+            }
         }
 
-        let command_buffer = builder.build().unwrap();
-
-        let future = acquire_future
-            .then_execute(queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(
-                queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    swapchain.clone(),
-                    image_index,
-                ),
-            )
-            .then_signal_fence_and_flush().unwrap();
-
-        future.wait(None).unwrap();
+        if self.keyboard.is_pressed(KeyCode::KeyW) {
+            self.scene.camera.translate(Vector3f::Z * self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::KeyA) {
+            self.scene.camera.translate(Vector3f::X * -self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::KeyS) {
+            self.scene.camera.translate(Vector3f::Z * -self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::KeyD) {
+            self.scene.camera.translate(Vector3f::X * self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::Space) {
+            self.scene.camera.translate(Vector3f::Y * -self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::ShiftLeft) {
+            self.scene.camera.translate(Vector3f::Y * self.delta_time * 2.0);
+        }
+        if self.keyboard.is_pressed(KeyCode::Escape) {
+            self.mouse_locked = false;
+            self.handle_mouse_lock();
+        } else if self.mouse.primary_button() {
+            self.mouse_locked = true;
+            self.handle_mouse_lock();
+        }
+        self.last_mouse = self.mouse.clone();
+        self.last_keyboard = self.keyboard.clone();
     }
 }
 
@@ -364,14 +196,19 @@ impl ApplicationHandler for Application {
                 .with_title("Hell!")
                 .with_surface_size(LogicalSize::new(f64::from(WIDTH), f64::from(HEIGHT)))
         ).unwrap());
-        self.window = Some(w.clone());
-        self.viewport = Some(Viewport {
+
+        let v = Viewport {
             offset: [0.0, 0.0],
             extent: w.clone().surface_size().into(),
             depth_range: 0.0..=1.0
-        });
-        let s = Surface::from_window(self.instance.clone(), w.clone()).expect("Failed to create surface");
+        };
+
+        self.window = Some(w.clone());
+        self.viewport = Some(v.clone());
+        let s = Surface::from_window(self.instance.clone(), w.clone()).unwrap();
         self.surface = Some(s.clone());
+
+        self.handle_mouse_lock();
 
         let dev_exts = Self::get_device_extensions();
         let (physical_device, queue_family_index) = Self::select_physical_device(self.instance.clone(), s.clone(), &dev_exts);
@@ -396,15 +233,9 @@ impl ApplicationHandler for Application {
                 enabled_extensions: dev_exts,
                 ..Default::default()
             },
-        ).expect("Failed to create device");
+        ).unwrap();
 
-        self.device = Some(device.clone());
-        self.queue = Some(queues.next().unwrap());
-        self.mem_alloc = Some(Arc::new(StandardMemoryAllocator::new_default(device.clone())));
-
-        let caps = physical_device
-            .surface_capabilities(&s, Default::default())
-            .expect("failed to get surface capabilities");
+        let caps = physical_device.surface_capabilities(&s, Default::default()).unwrap();
         let dimensions = w.surface_size();
         let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
         let image_format =  physical_device
@@ -423,17 +254,29 @@ impl ApplicationHandler for Application {
                 ..Default::default()
             },
         ).unwrap();
-        self.swapchain = Some(swapchain);
-        self.images = Some(images);
 
-        let vs = vs::load(device.clone()).unwrap();
-        let fs = fs::load(device.clone()).unwrap();
+        self.renderer = Some(Renderer::new(device, queues.next().unwrap(), swapchain, images, v));
 
-        let render_pass = self.get_render_pass();
-        self.framebuffers = self.get_framebuffers(&render_pass);
-        self.pipeline = Some(self.get_pipeline(vs, fs, render_pass.clone()));
+        self.scene.add_object(Object::new(
+            Arc::new(Mesh::new(
+                self.renderer.as_ref().unwrap().mem_alloc.clone(),
+                vec![Vertex { position: [-0.5, -0.5, 0.0 ] }, Vertex { position: [ 0.0, 0.5, 0.0 ] }, Vertex { position: [ 0.5, -0.5, 0.0 ] }],
+                None
+            )),
+            Vector3f::ZERO,
+            Vector3f::ZERO
+        ));
+        self.scene.add_object(Object::new(
+            Arc::new(Mesh::new(
+                self.renderer.as_ref().unwrap().mem_alloc.clone(),
+                vec![Vertex { position: [-1.0, -1.0, -10.0 ] }, Vertex { position: [ -1.0, -0.5, -10.0 ] }, Vertex { position: [ -0.5, -0.5, -10.0 ] }],
+                None
+            )),
+            Vector3f::ZERO,
+            Vector3f::ZERO
+        ));
 
-        println!("Window instantiated");
+        println!("Window instantiated! :D");
     }
 
     fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
@@ -442,14 +285,33 @@ impl ApplicationHandler for Application {
                 println!("The close button was pressed; stopping");
                 event_loop.exit();
             },
-            WindowEvent::PointerMoved { device_id, position, primary, source } => {
+            WindowEvent::PointerMoved { position, primary, .. } => {
                 if primary {
                     self.mouse.x = position.x;
                     self.mouse.y = position.y;
                 }
             },
-            WindowEvent::SurfaceResized(size) => {
-
+            WindowEvent::PointerButton { state, primary, button, .. } => {
+                if primary {
+                    if let ButtonSource::Mouse(btn) = button {
+                        match btn {
+                            MouseButton::Left => self.mouse.left = state.is_pressed(),
+                            MouseButton::Right => self.mouse.right = state.is_pressed(),
+                            MouseButton::Middle => self.mouse.middle = state.is_pressed(),
+                            MouseButton::Back => self.mouse.back = state.is_pressed(),
+                            MouseButton::Forward => self.mouse.forward = state.is_pressed(),
+                            _ => ()
+                        }
+                    }
+                }
+            },
+            WindowEvent::SurfaceResized(..) => {
+                self.window_resized = true;
+            },
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let Code(code) = event.physical_key {
+                    self.keyboard.set_pressed(code, event.state.is_pressed());
+                }
             },
             WindowEvent::RedrawRequested => unsafe {
                 // Redraw the application.
@@ -466,6 +328,27 @@ impl ApplicationHandler for Application {
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
                 self.window.as_ref().unwrap().request_redraw();
+                
+                if /*self.window_resized ||*/ self.recreate_swapchain {
+                    self.recreate_swapchain = false;
+                    let renderer = self.renderer.as_mut().unwrap();
+                    
+                    let new_dims = self.window.as_ref().unwrap().surface_size();
+                    let (swapchain, images) = renderer.swapchain.recreate(SwapchainCreateInfo {
+                        image_extent: new_dims.into(),
+                        ..renderer.swapchain.create_info()
+                    }).expect("Failed to recreate swapchain");
+                    renderer.framebuffers = Renderer::get_framebuffers(&images, &renderer.render_pass, renderer.mem_alloc.clone());
+                    renderer.swapchain = swapchain;
+                    renderer.images = images;
+
+                    if self.window_resized {
+                        self.window_resized = false;
+
+                        self.viewport.as_mut().unwrap().extent = new_dims.into();
+                        //renderer.pipeline = Renderer::get_pipeline(&renderer.device, self.viewport.clone().unwrap(), &renderer.vs, &renderer.fs, &renderer.render_pass);
+                    }
+                }
             },
             _ => ()
         }
@@ -473,15 +356,9 @@ impl ApplicationHandler for Application {
 
     fn device_event(&mut self, event_loop: &dyn ActiveEventLoop, device_id: Option<DeviceId>, event: DeviceEvent) {
         match event {
-            DeviceEvent::Key(raw) => {
-                if let Code(code) = raw.physical_key {
-                    let pressed = raw.state.is_pressed();
-                    self.keyboard.set_pressed(code, pressed);
-                    if pressed {
-                        println!("Key {} pressed", code);
-                    } else {
-                        println!("Key {} released", code);
-                    }
+            DeviceEvent::PointerMotion { delta } => {
+                if self.mouse_locked {
+                    self.scene.camera.rotate((delta.0 as f32) * 0.15, (delta.1 as f32) * 0.15);
                 }
             },
             _ => ()

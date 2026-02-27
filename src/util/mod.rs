@@ -1,2 +1,2 @@
 pub mod vectors;
-pub mod dimensions;
+pub mod matrices;
