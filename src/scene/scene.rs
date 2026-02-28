@@ -23,4 +23,10 @@ impl Scene {
     pub fn destroy_all_objects(&mut self) { self.objects.clear() }
 
     pub fn get_object(&self, idx: usize) -> &Object { &self.objects[idx] }
+
+    pub fn update(&mut self, delta_time: f32) {
+        for object in &mut self.objects {
+            object.update(delta_time);
+        }
+    }
 }

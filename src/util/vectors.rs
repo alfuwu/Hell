@@ -28,7 +28,7 @@ impl Vector3f {
     pub fn distance(self, other: Self) -> f32 { f32::sqrt(self.distance_squared(other)) }
     pub fn distance_squared(self, other: Self) -> f32 { (self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y) + (self.z - other.z) * (self.z - other.z) }
     pub fn dot(self, other: Self) -> f32 { self.x * other.x + self.y * other.y + self.z * other.z }
-    pub fn angle(self, other: Self) -> f32 { Self::angle_between(self, other) } // in rads
+    pub fn angle(&self, second: Self) -> f32 { let prod = self.length() * second.length(); if prod == 0.0 { return 0.0 } f32::acos((self.dot(second) / prod).clamp(-1.0, 1.0)) } // in rads
     pub fn cross(self, other: Self) -> Self { Self { x: self.y * other.z - other.y * self.z, y: self.z * other.x - other.z * self.x, z: self.x * other.y - other.x * self.y } }
     pub fn clamp(self, min: Self, max: Self) -> Self { Self { x: self.x.clamp(min.x, max.x), y: self.y.clamp(min.y, max.y), z: self.z.clamp(min.z, max.z) } }
     pub fn clamp_length(self, max_len: f32) -> Self { let len_sq = self.length_squared(); if len_sq > max_len * max_len { self * (max_len / len_sq.sqrt()) } else { self } }
@@ -48,12 +48,11 @@ impl Vector3f {
     pub fn signum(self) -> Self { Self { x: self.x.signum(), y: self.y.signum(), z: self.z.signum() } }
     pub fn move_towards(self, target: Self, max_delta: f32) -> Self { let to = target - self; let dist = to.length(); if dist <= max_delta || dist == 0.0 { target } else { self + to / dist * max_delta } }
 
-    pub fn max(first: Self, second: Self) -> Self { Self { x: f32::max(first.x, second.x), y: f32::max(first.y, second.y), z: f32::max(first.z, second.z) } }
-    pub fn min(first: Self, second: Self) -> Self { Self { x: f32::min(first.x, second.x), y: f32::min(first.y, second.y), z: f32::min(first.z, second.z) } }
-    pub fn max_by_len(first: Self, second: Self) -> Self { if first.length_squared() < second.length_squared() { second } else { first } }
-    pub fn min_by_len(first: Self, second: Self) -> Self { if first.length_squared() < second.length_squared() { first } else { second } }
-    pub fn angle_between(first: Self, second: Self) -> f32 { let prod = first.length() * second.length(); if prod == 0.0 { return 0.0 } f32::acos((first.dot(second) / prod).clamp(-1.0, 1.0)) } // in rads
-    pub fn lerp(first: Self, second: Self, t: f32) -> Self { first + (second - first) * t }
+    pub fn max(&self, second: Self) -> Self { Self { x: f32::max(self.x, second.x), y: f32::max(self.y, second.y), z: f32::max(self.z, second.z) } }
+    pub fn min(&self, second: Self) -> Self { Self { x: f32::min(self.x, second.x), y: f32::min(self.y, second.y), z: f32::min(self.z, second.z) } }
+    pub fn max_by_len(self, second: Self) -> Self { if self.length_squared() < second.length_squared() { second } else { self } }
+    pub fn min_by_len(self, second: Self) -> Self { if self.length_squared() < second.length_squared() { self } else { second } }
+    pub fn lerp(&self, second: Self, t: f32) -> Self { self + (second - self) * t }
 }
 impl Add<Vector3f> for Vector3f {
     type Output = Self;
@@ -106,6 +105,90 @@ impl Mul<Vector3f> for f32 {
 impl<T> Div<T> for Vector3f where T: Into<f32> {
     type Output = Self;
     fn div(self, rhs: T) -> Self::Output { let rhs = rhs.into(); Self { x: self.x / rhs, y: self.y / rhs, z: self.z / rhs } }
+}
+impl Add<Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn add(self, rhs: Vector3f) -> Self::Output { Self::Output { x: self.x + rhs.x, y: self.y + rhs.y, z: self.z + rhs.z } }
+}
+impl Sub<Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn sub(self, rhs: Vector3f) -> Self::Output { Self::Output { x: self.x - rhs.x, y: self.y - rhs.y, z: self.z - rhs.z } }
+}
+impl Mul<Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn mul(self, rhs: Vector3f) -> Self::Output { Self::Output { x: self.x * rhs.x, y: self.y * rhs.y, z: self.z * rhs.z } }
+}
+impl Div<Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn div(self, rhs: Vector3f) -> Self::Output { Self::Output { x: self.x / rhs.x, y: self.y / rhs.y, z: self.z / rhs.z } }
+}
+impl Add<&Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn add(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x + rhs.x, y: self.y + rhs.y, z: self.z + rhs.z } }
+}
+impl Sub<&Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn sub(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x - rhs.x, y: self.y - rhs.y, z: self.z - rhs.z } }
+}
+impl Mul<&Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn mul(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x * rhs.x, y: self.y * rhs.y, z: self.z * rhs.z } }
+}
+impl Div<&Vector3f> for &Vector3f {
+    type Output = Vector3f;
+    fn div(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x / rhs.x, y: self.y / rhs.y, z: self.z / rhs.z } }
+}
+impl Add<&Vector3f> for Vector3f {
+    type Output = Vector3f;
+    fn add(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x + rhs.x, y: self.y + rhs.y, z: self.z + rhs.z } }
+}
+impl Sub<&Vector3f> for Vector3f {
+    type Output = Vector3f;
+    fn sub(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x - rhs.x, y: self.y - rhs.y, z: self.z - rhs.z } }
+}
+impl Mul<&Vector3f> for Vector3f {
+    type Output = Vector3f;
+    fn mul(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x * rhs.x, y: self.y * rhs.y, z: self.z * rhs.z } }
+}
+impl Div<&Vector3f> for Vector3f {
+    type Output = Vector3f;
+    fn div(self, rhs: &Vector3f) -> Self::Output { Self::Output { x: self.x / rhs.x, y: self.y / rhs.y, z: self.z / rhs.z } }
+}
+impl Neg for &Vector3f {
+    type Output = Vector3f;
+    fn neg(self) -> Self::Output { Self::Output { x: -self.x, y: -self.y, z: -self.z } }
+}
+impl AddAssign<Vector3f> for &mut Vector3f {
+    fn add_assign(&mut self, rhs: Vector3f) { self.x += rhs.x; self.y += rhs.y; self.z += rhs.z; }
+}
+impl SubAssign<Vector3f> for &mut Vector3f {
+    fn sub_assign(&mut self, rhs: Vector3f) { self.x -= rhs.x; self.y -= rhs.y; self.z -= rhs.z; }
+}
+impl MulAssign<Vector3f> for &mut Vector3f {
+    fn mul_assign(&mut self, rhs: Vector3f) { self.x *= rhs.x; self.y *= rhs.y; self.z *= rhs.z; }
+}
+impl DivAssign<Vector3f> for &mut Vector3f {
+    fn div_assign(&mut self, rhs: Vector3f) { self.x /= rhs.x; self.y /= rhs.y; self.z /= rhs.z; }
+}
+impl<T> Add<T> for &Vector3f where T: Into<f32> {
+    type Output = Vector3f;
+    fn add(self, rhs: T) -> Self::Output { let rhs = rhs.into(); Self::Output { x: self.x + rhs, y: self.y + rhs, z: self.z + rhs } }
+}
+impl<T> Sub<T> for &Vector3f where T: Into<f32> {
+    type Output = Vector3f;
+    fn sub(self, rhs: T) -> Self::Output { let rhs = rhs.into(); Self::Output { x: self.x - rhs, y: self.y - rhs, z: self.z - rhs } }
+}
+impl<T> Mul<T> for &Vector3f where T: Into<f32> {
+    type Output = Vector3f;
+    fn mul(self, rhs: T) -> Self::Output { let rhs = rhs.into(); Self::Output { x: self.x * rhs, y: self.y * rhs, z: self.z * rhs } }
+}
+impl Mul<&Vector3f> for f32 {
+    type Output = Vector3f;
+    fn mul(self, rhs: &Vector3f) -> Self::Output { rhs * self }
+}
+impl<T> Div<T> for &Vector3f where T: Into<f32> {
+    type Output = Vector3f;
+    fn div(self, rhs: T) -> Self::Output { let rhs = rhs.into(); Self::Output { x: self.x / rhs, y: self.y / rhs, z: self.z / rhs } }
 }
 impl<T> AddAssign<T> for Vector3f where T: Into<f32> {
     fn add_assign(&mut self, rhs: T) { let rhs = rhs.into(); self.x += rhs; self.y += rhs; self.z += rhs }

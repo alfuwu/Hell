@@ -12,17 +12,20 @@ use vulkano::{
     VulkanLibrary,
     instance::{Instance, InstanceCreateInfo, InstanceCreateFlags},
     device::{physical::{PhysicalDevice, PhysicalDeviceType}, Device, DeviceExtensions, DeviceCreateInfo, QueueCreateInfo, QueueFlags},
-    image::ImageUsage,
+    image::{view::ImageView, ImageUsage},
     pipeline::graphics::viewport::Viewport,
     swapchain::{Swapchain, SwapchainCreateInfo, Surface}
 };
 use crate::input::devices::{Keyboard, Mouse};
+use crate::rendering::color::Color;
 use crate::rendering::mesh::Mesh;
 use crate::rendering::renderer::Renderer;
+use crate::rendering::texture::Texture;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
-use crate::util::noise::perlin::gradient_noise_2d::noise;
+use crate::scene::behaviors::spin::SpinBehavior;
+use crate::util::noise::perlin::gradient_noise_2d::octave_noise;
 use crate::util::vectors::Vector3f;
 
 const WIDTH: u32 = 800;
@@ -160,23 +163,25 @@ impl Application {
             }
         }
 
+        self.scene.update(elapsed);
+
         if self.keyboard.is_pressed(KeyCode::KeyW) {
-            self.scene.camera.translate(Vector3f::Z * self.delta_time * 2.0);
+            self.scene.camera.translate(Vector3f::Z * self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyA) {
-            self.scene.camera.translate(Vector3f::X * -self.delta_time * 2.0);
+            self.scene.camera.translate(Vector3f::X * -self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyS) {
-            self.scene.camera.translate(Vector3f::Z * -self.delta_time * 2.0);
+            self.scene.camera.translate(Vector3f::Z * -self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyD) {
-            self.scene.camera.translate(Vector3f::X * self.delta_time * 2.0);
+            self.scene.camera.translate(Vector3f::X * self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::Space) {
-            self.scene.camera.translate_abs(Vector3f::Y * -self.delta_time * 2.0);
+            self.scene.camera.translate_abs(Vector3f::Y * -self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::ShiftLeft) {
-            self.scene.camera.translate_abs(Vector3f::Y * self.delta_time * 2.0);
+            self.scene.camera.translate_abs(Vector3f::Y * self.delta_time * 5.0);
         }
         if self.keyboard.is_pressed(KeyCode::Escape) {
             self.mouse_locked = false;
@@ -261,14 +266,40 @@ impl ApplicationHandler for Application {
         const GRID_SIZE: usize = 10;
         let mut vertices: Vec<Vertex> = vec![Vertex::default(); (GRID_SIZE+1)*(GRID_SIZE+1)];
 
+        let tex_size = GRID_SIZE * 10;
+        let mut texture: Vec<u8> = Vec::with_capacity((tex_size+1) * (tex_size+1) * 4);
+
+        for y in 0..=tex_size {
+            for x in 0..=tex_size {
+                let l = (x as f32 * 0.5) * 0.1;
+                let t = (y as f32 * 0.5) * 0.1;
+
+                let h = octave_noise(l, t, 0, 4, 0.5, 2.0);
+
+                let normalized = ((h + 1.0) * 0.5).clamp(0.0, 1.0);
+                let clr = match normalized {
+                    n if n > 0.8 => Color::rgb(255, 255, 255),
+                    n if n > 0.55 => Color::lerp(&Color::rgb(128, 128, 128), &Color::rgb(255, 255, 255), f32::max((n - 0.7) * 10.0, 0.0)),
+                    n if n > 0.4 => Color::lerp(&Color::rgb(43, 251, 51), &Color::rgb(128, 128, 128), f32::max((n - 0.5) * 20.0, 0.0)),
+                    n if n > 0.3 => Color::lerp(&Color::rgb(245, 201, 116), &Color::rgb(43, 251, 51), f32::max((n - 0.3) * 10.0, 0.0)),
+                    _ => Color::rgb(245, 201, 116),
+                };
+
+                texture.push(clr.r());
+                texture.push(clr.g());
+                texture.push(clr.b());
+                texture.push(255);
+            }
+        }
+
         // generate vertex positions and UVs
         for i in 0..=GRID_SIZE {
             for j in 0..=GRID_SIZE {
                 let l = i as f32;
                 let t = j as f32;
-                let h = noise(l * 10.5, t * 10.5, 0);
+                let h = octave_noise(l * 0.5, t * 0.5, 0, 4, 0.5, 2.0) * 5.0;
                 let idx = i * (GRID_SIZE+1) + j;
-                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32)
+                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32);
             }
         }
 
@@ -295,12 +326,12 @@ impl ApplicationHandler for Application {
                 (&renderer).mem_alloc.clone(),
                 Vertex::flatten(&vertices, &indices),
                 None,
-                None
+                Some(Texture::linear(ImageView::new_default(renderer.create_image(texture.clone(), tex_size as u32 + 1, tex_size as u32 + 1)).unwrap()))
             )),
             Vector3f::new(-5.0, 1.0, -5.0),
-            Vector3f::new(f32::to_radians(90.0), 0.0, 0.0),
+            Vector3f::new(0.0, 0.0, 0.0),
             Vector3f::uniform(10.0)
-        ));
+        ).with_behavior(Box::new(SpinBehavior)));
 
         self.renderer = Some(renderer);
 

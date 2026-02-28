@@ -424,10 +424,6 @@ impl Mul<Vector3f> for Matrix4f {
     type Output = Vector3f;
 
     fn mul(self, v: Vector3f) -> Self::Output {
-        let x = self.m[0][0]*v.x + self.m[0][1]*v.y + self.m[0][2]*v.z + self.m[0][3];
-        let y = self.m[1][0]*v.x + self.m[1][1]*v.y + self.m[1][2]*v.z + self.m[1][3];
-        let z = self.m[2][0]*v.x + self.m[2][1]*v.y + self.m[2][2]*v.z + self.m[2][3];
-
-        Vector3f { x, y, z }
+        self.transform_point(v)
     }
 }

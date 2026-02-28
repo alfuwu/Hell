@@ -23,6 +23,10 @@
 use crate::util::noise::{constants, noise_util};
 use crate::util::noise::noise_period::NoisePeriod;
 
+pub fn i_noise(x: impl Into<i32>, y: impl Into<i32>, seed: i32) -> f32 {
+    noise(x.into() as f32 + 0.5, y.into() as f32 + 0.5, seed)
+}
+
 /// -1 to 1 gradient noise function. Analogous to Perlin noise.
 pub const fn noise(x: f32, y: f32, seed: i32) -> f32 {
     // NOTE: if you are looking to understand how this function works, first make sure
@@ -71,6 +75,40 @@ pub const fn noise(x: f32, y: f32, seed: i32) -> f32 {
         .wrapping_add(constants::X_PLUS_Y_PRIME1)
         .wrapping_mul(p2.wrapping_add(constants::X_PLUS_Y_PRIME2));
     interpolate_gradients(ll_hash, lr_hash, ul_hash, ur_hash, fx, fy)
+}
+
+pub const fn octave_noise(
+    x: f32,
+    y: f32,
+    seed: i32,
+    octaves: u32,
+    persistence: f32,
+    lacunarity: f32,
+) -> f32 {
+    let mut total = 0.0;
+
+    let mut frequency = 1.0;
+    let mut amplitude = 1.0;
+
+    let mut max_amplitude = 0.0;
+
+    let mut i = 0;
+    while i < octaves {
+        total += noise(x * frequency, y * frequency, seed) * amplitude;
+        max_amplitude += amplitude;
+
+        amplitude *= persistence;
+        frequency *= lacunarity;
+
+        i += 1;
+    }
+
+    // Normalize to roughly [-1, 1]
+    if max_amplitude != 0.0 {
+        total / max_amplitude
+    } else {
+        0.0
+    }
 }
 
 /// Two separately seeded fields of -1 to 1 gradient noise.
@@ -123,8 +161,7 @@ pub const fn gradient_noise_periodic(
     let fx = x - ix as f32;
     let fy = y - iy as f32;
 
-    let seed = seed
-        .wrapping_mul(constants::SEED_PRIME << constants::PERIOD_SHIFT);
+    let seed = seed.wrapping_mul(constants::SEED_PRIME << constants::PERIOD_SHIFT);
 
     ix = ix.wrapping_add(seed);
     iy = iy.wrapping_add(seed);
@@ -133,8 +170,8 @@ pub const fn gradient_noise_periodic(
     // instead we create a periodic value for each coordinate using a multiply and bitshift
     // instead of a mod operator, then plug those values into an efficient hash function.
     // left, lower, right, and upper are the periodic hash inputs.
-    // period.xf = uint.MaxValue / xPeriod and
-    // period.yf = uint.MaxValue / yPeriod.
+    // period.xf = u32::MAX / x_period and
+    // period.yf = u32::MAX / y_period.
     // this means that the multiply wraps back to zero at the period with an overflow
     // that doesn't affect the bits and a slight error that is removed by a right shift.
     let mut left = ix.wrapping_mul(period.xf);
@@ -163,7 +200,7 @@ pub const fn gradient_noise_periodic_vec2(
     period: &NoisePeriod,
     seed: i32,
 ) -> (f32, f32) {
-    // see comments in GradientNoisePeriodic() and GradientNoise()
+    // see comments in gradient_noise_periodic() and gradient_noise()
     let mut ix = if x > 0.0 { x as i32 } else { x as i32 - 1 };
     let mut iy = if y > 0.0 { y as i32 } else { y as i32 - 1 };
     let fx = x - ix as f32;

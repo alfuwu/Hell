@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -44,6 +45,7 @@ use vulkano::{
     Validated
 };
 use vulkano::image::sampler::{Filter, SamplerMipmapMode};
+use crate::rendering::texture::SampleType;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::{fs, vs, Vertex};
 use crate::scene::camera::CameraUBO;
@@ -127,47 +129,7 @@ impl Renderer {
             255, 0, 255, 255, // purple
         ];
 
-        let image = Image::new(
-            mem_alloc.clone(),
-            ImageCreateInfo {
-                format: Format::R8G8B8A8_UNORM,
-                extent: [2, 2, 1],
-                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
-                ..Default::default()
-            },
-            AllocationCreateInfo::default(),
-        ).unwrap();
-
-        let staging_buffer = Buffer::from_iter(
-            mem_alloc.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            data
-        ).unwrap();
-
-        let mut builder = AutoCommandBufferBuilder::primary(
-            command_alloc.clone(),
-            queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit
-        ).unwrap();
-
-        builder
-            .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                staging_buffer.clone(),
-                image.clone()
-            )).unwrap();
-
-        builder.build().unwrap()
-            .execute(queue.clone()).unwrap()
-            .then_signal_fence_and_flush().unwrap()
-            .wait(None).unwrap();
-
+        let image = Self::upload_gpu_image(mem_alloc, command_alloc, queue, data.to_vec(), 2, 2);
         ImageView::new_default(image).unwrap()
     }
 
@@ -285,7 +247,61 @@ impl Renderer {
             },
         ).unwrap()
     }
+    pub(crate) fn upload_gpu_image(
+        mem_alloc: Arc<dyn MemoryAllocator>,
+        command_alloc: Arc<dyn CommandBufferAllocator>,
+        queue: Arc<Queue>,
+        data: Vec<u8>,
+        width: u32,
+        height: u32
+    ) -> Arc<Image> {
+        let image = Image::new(
+            mem_alloc.clone(),
+            ImageCreateInfo {
+                format: Format::R8G8B8A8_UNORM,
+                extent: [width, height, 1],
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+        ).unwrap();
 
+        let staging_buffer = Buffer::from_iter(
+            mem_alloc.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            data
+        ).unwrap();
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            command_alloc.clone(),
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit
+        ).unwrap();
+
+        builder
+            .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                staging_buffer.clone(),
+                image.clone()
+            )).unwrap();
+
+        builder.build().unwrap()
+            .execute(queue.clone()).unwrap()
+            .then_signal_fence_and_flush().unwrap()
+            .wait(None).unwrap();
+
+        image
+    }
+
+    pub fn create_image(&self, data: Vec<u8>, width: u32, height: u32) -> Arc<Image> {
+        Self::upload_gpu_image(self.mem_alloc.clone(), self.command_alloc.clone(), self.queue.clone(), data, width, height)
+    }
     pub fn create_buffer_single<T>(&self, data: T) -> Subbuffer<T> where T : BufferContents {
         Buffer::from_data(
             self.mem_alloc.clone(),
@@ -323,15 +339,6 @@ impl Renderer {
         let camera_buffer = self.create_buffer_single(camera_data);
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap().clone();
-        let descriptor_set = DescriptorSet::new(
-            self.descriptor_alloc.clone(),
-            layout,
-            [
-                WriteDescriptorSet::buffer(0, camera_buffer.clone()),
-                WriteDescriptorSet::image_view_sampler(1, self.missing_texture.clone(), self.point_sampler.clone()),
-            ],
-            []
-        ).unwrap();
 
         let (image_index, suboptimal, acquire_future) =
             match acquire_next_image(self.swapchain.clone(), None).map_err(Validated::unwrap) {
@@ -366,10 +373,32 @@ impl Renderer {
 
         unsafe {
             for object in &scene.objects {
-                let translation = Matrix4f::translation(object.position);
-                let rotation = Matrix4f::rotation_euler(object.rotation.x, object.rotation.y, object.rotation.z);
+                let pivot_translation = Matrix4f::translation(-object.pivot);
+                let rotation = Matrix4f::rotation_euler(object.rotation.x + FRAC_PI_2, object.rotation.y, object.rotation.z);
+                let pivot_back_translation = Matrix4f::translation(object.pivot);
                 let scale = Matrix4f::scale(object.scale);
-                let model = translation * rotation * scale;
+                let translation = Matrix4f::translation(object.position);
+
+                let model = translation * pivot_back_translation * rotation * scale * pivot_translation;
+
+                let image_sampler = if let Some(tex) = object.mesh.texture.clone() {
+                    WriteDescriptorSet::image_view_sampler(1, tex.texture, match tex.sample_type {
+                        SampleType::POINT => self.point_sampler.clone(),
+                        SampleType::LINEAR => self.linear_sampler.clone(),
+                    })
+                } else {
+                    WriteDescriptorSet::image_view_sampler(1, self.missing_texture.clone(), self.point_sampler.clone())
+                };
+
+                let descriptor_set = DescriptorSet::new(
+                    self.descriptor_alloc.clone(),
+                    layout.clone(),
+                    [
+                        WriteDescriptorSet::buffer(0, camera_buffer.clone()),
+                        image_sampler
+                    ],
+                    []
+                ).unwrap();
 
                 buffer
                     .bind_pipeline_graphics(self.pipeline.clone()).unwrap()
