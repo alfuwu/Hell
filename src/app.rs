@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::{
@@ -24,6 +26,7 @@ use crate::rendering::texture::Texture;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
+use crate::scene::behaviors::physics_behavior::PhysicsBehavior;
 use crate::scene::behaviors::spin::SpinBehavior;
 use crate::util::noise::perlin::gradient_noise_2d::octave_noise;
 use crate::util::vectors::Vector3f;
@@ -150,6 +153,91 @@ impl Application {
         self.window.as_ref().unwrap().set_cursor_visible(!self.mouse_locked);
     }
 
+    fn awake(&mut self) {
+        let renderer = self.renderer.as_ref().unwrap();
+
+        const GRID_SIZE: usize = 10;
+        let mut vertices: Vec<Vertex> = vec![Vertex::default(); (GRID_SIZE+1)*(GRID_SIZE+1)];
+
+        const TEX_SIZE: usize = GRID_SIZE * 10;
+        let mut texture: Vec<u8> = Vec::with_capacity((TEX_SIZE+1)*(TEX_SIZE+1) * 4);
+
+        for y in 0..=TEX_SIZE {
+            for x in 0..=TEX_SIZE {
+                let l = (x as f32 * 0.5) * 0.1;
+                let t = (y as f32 * 0.5) * 0.1;
+
+                let h = octave_noise(l, t, 0, 4, 0.5, 2.0);
+
+                let normalized = ((h + 1.0) * 0.5).clamp(0.0, 1.0);
+                let clr = match normalized {
+                    n if n > 0.8 => Color::rgb(255, 255, 255),
+                    n if n > 0.55 => Color::lerp(&Color::rgb(128, 128, 128), &Color::rgb(255, 255, 255), f32::max((n - 0.7) * 10.0, 0.0)),
+                    n if n > 0.4 => Color::lerp(&Color::rgb(43, 251, 51), &Color::rgb(128, 128, 128), f32::max((n - 0.5) * 20.0, 0.0)),
+                    n if n > 0.3 => Color::lerp(&Color::rgb(245, 201, 116), &Color::rgb(43, 251, 51), f32::max((n - 0.3) * 10.0, 0.0)),
+                    _ => Color::rgb(245, 201, 116),
+                };
+
+                texture.push(clr.r());
+                texture.push(clr.g());
+                texture.push(clr.b());
+                texture.push(255);
+            }
+        }
+
+        // generate vertex positions and UVs
+        for i in 0..=GRID_SIZE {
+            for j in 0..=GRID_SIZE {
+                let l = i as f32;
+                let t = j as f32;
+                let h = octave_noise(l * 0.5, t * 0.5, 0, 4, 0.5, 2.0) * 5.0;
+                let idx = i * (GRID_SIZE+1) + j;
+                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32);
+            }
+        }
+
+        let mut indices: Vec<u32> = vec![];
+
+        for i in 0..GRID_SIZE {
+            for j in 0..GRID_SIZE {
+                let tl = (i * (GRID_SIZE+1) + j) as u32;
+                let tr = ((i+1) * (GRID_SIZE+1) + j) as u32;
+                let bl = (i * (GRID_SIZE+1) + (j+1)) as u32;
+                let br = ((i+1) * (GRID_SIZE+1) + (j+1)) as u32;
+
+                // left triangle  |\
+                indices.push(tl); indices.push(bl); indices.push(br);
+                // right triangle \|
+                indices.push(tl); indices.push(br); indices.push(tr);
+            }
+        }
+
+        Vertex::calculate_normals(&mut vertices, &indices);
+
+        let mesh = Arc::new(Mesh::new(
+            (&renderer).mem_alloc.clone(),
+            vertices,
+            Some(indices),
+            Some(Texture::point(ImageView::new_default(renderer.create_image(texture.clone(), TEX_SIZE as u32 + 1, TEX_SIZE as u32 + 1)).unwrap()))
+        ));
+        self.scene.add_object(Object::new(
+            mesh.clone(),
+            Vector3f::new(-5.0, 1.0, -5.0),
+            Vector3f::new(0.0, 0.0, 0.0),
+            Vector3f::uniform(10.0)
+        )/*.with_behavior(Box::new(SpinBehavior))*/);
+
+        let file = File::create(Path::new("mesh.mod")).unwrap();
+        mesh.save(file, true, false).unwrap();
+
+        self.scene.add_object(Object::new(
+            Arc::new(Mesh::cube((&renderer).mem_alloc.clone(), None)),
+            Vector3f::new(-5.0, -10.0, -5.0),
+            Vector3f::new(0.0, 0.0, 0.0),
+            Vector3f::uniform(10.0)
+        ))
+    }
+
     unsafe fn draw(&mut self) {
         let now = Instant::now();
         let elapsed = (now - self.last_frame).as_millis() as f32 / 1000.0;
@@ -261,79 +349,9 @@ impl ApplicationHandler for Application {
             },
         ).unwrap();
 
-        let renderer= Renderer::new(device, queues.next().unwrap(), swapchain, images, v);
+        self.renderer = Some(Renderer::new(device, queues.next().unwrap(), swapchain, images, v));
 
-        const GRID_SIZE: usize = 10;
-        let mut vertices: Vec<Vertex> = vec![Vertex::default(); (GRID_SIZE+1)*(GRID_SIZE+1)];
-
-        let tex_size = GRID_SIZE * 10;
-        let mut texture: Vec<u8> = Vec::with_capacity((tex_size+1) * (tex_size+1) * 4);
-
-        for y in 0..=tex_size {
-            for x in 0..=tex_size {
-                let l = (x as f32 * 0.5) * 0.1;
-                let t = (y as f32 * 0.5) * 0.1;
-
-                let h = octave_noise(l, t, 0, 4, 0.5, 2.0);
-
-                let normalized = ((h + 1.0) * 0.5).clamp(0.0, 1.0);
-                let clr = match normalized {
-                    n if n > 0.8 => Color::rgb(255, 255, 255),
-                    n if n > 0.55 => Color::lerp(&Color::rgb(128, 128, 128), &Color::rgb(255, 255, 255), f32::max((n - 0.7) * 10.0, 0.0)),
-                    n if n > 0.4 => Color::lerp(&Color::rgb(43, 251, 51), &Color::rgb(128, 128, 128), f32::max((n - 0.5) * 20.0, 0.0)),
-                    n if n > 0.3 => Color::lerp(&Color::rgb(245, 201, 116), &Color::rgb(43, 251, 51), f32::max((n - 0.3) * 10.0, 0.0)),
-                    _ => Color::rgb(245, 201, 116),
-                };
-
-                texture.push(clr.r());
-                texture.push(clr.g());
-                texture.push(clr.b());
-                texture.push(255);
-            }
-        }
-
-        // generate vertex positions and UVs
-        for i in 0..=GRID_SIZE {
-            for j in 0..=GRID_SIZE {
-                let l = i as f32;
-                let t = j as f32;
-                let h = octave_noise(l * 0.5, t * 0.5, 0, 4, 0.5, 2.0) * 5.0;
-                let idx = i * (GRID_SIZE+1) + j;
-                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32);
-            }
-        }
-
-        let mut indices: Vec<usize> = vec![];
-
-        for i in 0..GRID_SIZE {
-            for j in 0..GRID_SIZE {
-                let tl = i * (GRID_SIZE+1) + j;
-                let tr = (i+1) * (GRID_SIZE+1) + j;
-                let bl = i * (GRID_SIZE+1) + (j+1);
-                let br = (i+1) * (GRID_SIZE+1) + (j+1);
-
-                // left triangle  |\
-                indices.push(tl); indices.push(bl); indices.push(br);
-                // right triangle \|
-                indices.push(tl); indices.push(br); indices.push(tr);
-            }
-        }
-
-        Vertex::calculate_normals(&mut vertices, &indices);
-
-        self.scene.add_object(Object::new(
-            Arc::new(Mesh::new(
-                (&renderer).mem_alloc.clone(),
-                Vertex::flatten(&vertices, &indices),
-                None,
-                Some(Texture::linear(ImageView::new_default(renderer.create_image(texture.clone(), tex_size as u32 + 1, tex_size as u32 + 1)).unwrap()))
-            )),
-            Vector3f::new(-5.0, 1.0, -5.0),
-            Vector3f::new(0.0, 0.0, 0.0),
-            Vector3f::uniform(10.0)
-        ).with_behavior(Box::new(SpinBehavior)));
-
-        self.renderer = Some(renderer);
+        self.awake();
 
         println!("Window instantiated! :D");
     }

@@ -416,7 +416,7 @@ impl Renderer {
                     .bind_vertex_buffers(0, object.mesh.vertex_buffer.clone()).unwrap();
                 if let Some(idx_buffer) = object.mesh.index_buffer.clone() {
                     buffer.bind_index_buffer(idx_buffer).unwrap()
-                        .draw_indexed(object.mesh.vertex_count, 1, 0, 0, 0).unwrap();
+                        .draw_indexed(object.mesh.index_count, 1, 0, 0, 0).unwrap();
                 } else {
                     buffer.draw(object.mesh.vertex_count, 1, 0, 0).unwrap();
                 }

@@ -1,4 +1,5 @@
-use crate::scene::camera::{Camera, Camera2D, Camera3D};
+use std::mem::take;
+use crate::scene::camera::{Camera, Camera3D};
 use crate::scene::object::Object;
 
 pub struct Scene {
@@ -25,8 +26,12 @@ impl Scene {
     pub fn get_object(&self, idx: usize) -> &Object { &self.objects[idx] }
 
     pub fn update(&mut self, delta_time: f32) {
-        for object in &mut self.objects {
-            object.update(delta_time);
+        let mut objects = take(&mut self.objects);
+        for object in &mut objects {
+            object.update(self, delta_time);
         }
+        // just in case Scene::add_object is called during a world update
+        objects.append(&mut self.objects);
+        self.objects = objects;
     }
 }

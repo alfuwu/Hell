@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use vulkano::buffer::BufferContents;
 use vulkano::pipeline::graphics::vertex_input::{Vertex as VulkanVertex, VertexBufferDescription};
 
@@ -57,14 +58,14 @@ impl Vertex {
         [nx / length, ny / length, nz / length]
     }
     
-    pub fn calculate_normals(vertices: &mut Vec<Vertex>, indices: &Vec<usize>) -> () {
+    pub fn calculate_normals(vertices: &mut Vec<Vertex>, indices: &Vec<u32>) {
         // accumulate normals
         for tri in indices.chunks(3) {
-            let n = Vertex::triangle_normal(&vertices[tri[0]], &vertices[tri[1]], &vertices[tri[2]]);
+            let n = Vertex::triangle_normal(&vertices[tri[0] as usize], &vertices[tri[1] as usize], &vertices[tri[2] as usize]);
             for &idx in tri {
-                vertices[idx].normal[0] += n[0];
-                vertices[idx].normal[1] += n[1];
-                vertices[idx].normal[2] += n[2];
+                vertices[idx as usize].normal[0] += n[0];
+                vertices[idx as usize].normal[1] += n[1];
+                vertices[idx as usize].normal[2] += n[2];
             }
         }
 
@@ -75,6 +76,41 @@ impl Vertex {
                 v.normal[0] /= len;
                 v.normal[1] /= len;
                 v.normal[2] /= len;
+            }
+        }
+    }
+
+    // produces smooth normals for meshes that has multiple vertices in the same spatial position (for UV reasons)
+    // naturally is more expensive to calculate than the regular calculate_normals function due to storing a hashmap of positions
+    pub fn calculate_normals_expensively(vertices: &mut Vec<Vertex>, indices: &Vec<u32>) {
+        let mut normal_map: HashMap<[u32; 3], [f32; 3]> = HashMap::new();
+
+        for tri in indices.chunks(3) {
+            let n = Vertex::triangle_normal(
+                &vertices[tri[0] as usize],
+                &vertices[tri[1] as usize],
+                &vertices[tri[2] as usize],
+            );
+            for &idx in tri {
+                let pos = vertices[idx as usize].position;
+                let key = [pos[0].to_bits(), pos[1].to_bits(), pos[2].to_bits()];
+                let entry = normal_map.entry(key).or_insert([0.0, 0.0, 0.0]);
+                entry[0] += n[0];
+                entry[1] += n[1];
+                entry[2] += n[2];
+            }
+        }
+
+        // normalize
+        for v in vertices.iter_mut() {
+            let key = [v.position[0].to_bits(), v.position[1].to_bits(), v.position[2].to_bits()];
+            if let Some(n) = normal_map.get(&key) {
+                let len = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
+                if len != 0.0 {
+                    v.normal[0] = n[0] / len;
+                    v.normal[1] = n[1] / len;
+                    v.normal[2] = n[2] / len;
+                }
             }
         }
     }

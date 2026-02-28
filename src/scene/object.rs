@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use crate::rendering::mesh::Mesh;
 use crate::scene::behaviors::behavior::Behavior;
+use crate::scene::collision::AABB;
+use crate::scene::scene::Scene;
 use crate::util::vectors::Vector3f;
 
 pub struct Object {
@@ -30,13 +32,13 @@ impl Object {
         self
     }
 
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, scene: &mut Scene, delta_time: f32) {
         if let Some(behavior) = self.behavior.as_mut() {
             // temporarily take out the behavior as a raw pointer reference
             // so rust doesn't think self is mutably borrowed twice
             let behavior_ptr: *mut Box<dyn Behavior> = behavior;
             unsafe {
-                (*behavior_ptr).update(self, delta_time);
+                (*behavior_ptr).update(self, scene, delta_time);
             }
         }
     }
