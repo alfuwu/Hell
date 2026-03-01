@@ -16,43 +16,45 @@ impl Vector3f {
     pub const Z: Vector3f = Vector3f::new(0.0, 0.0, 1.0);
 
     pub const fn new(x: f32, y: f32, z: f32) -> Self { Self { x, y, z } }
+    pub const fn from_array(array: [f32; 3]) -> Self { Self { x: array[0], y: array[1], z: array[2] } }
     pub const fn uniform(xyz: f32) -> Self { Self { x: xyz, y: xyz, z: xyz } }
     pub const fn zero() -> Self { Self { x: 0.0, y: 0.0, z: 0.0 } }
     pub const fn one() -> Self { Self { x: 1.0, y: 1.0, z: 1.0 } }
 
-    pub fn length(self) -> f32 { self.length_squared().sqrt() }
-    pub fn length_squared(self) -> f32 { self.x * self.x + self.y * self.y + self.z * self.z }
-    pub fn normalize(self) -> Self { self.try_normalize().unwrap_or(Self::ZERO) }
-    pub fn normalized(self) -> Self { self.normalize() }
-    pub fn try_normalize(self) -> Option<Self> { let len = self.length(); (len > 0.0).then(|| self / len) }
-    pub fn distance(self, other: Self) -> f32 { f32::sqrt(self.distance_squared(other)) }
-    pub fn distance_squared(self, other: Self) -> f32 { (self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y) + (self.z - other.z) * (self.z - other.z) }
-    pub fn dot(self, other: Self) -> f32 { self.x * other.x + self.y * other.y + self.z * other.z }
-    pub fn angle(&self, second: Self) -> f32 { let prod = self.length() * second.length(); if prod == 0.0 { return 0.0 } f32::acos((self.dot(second) / prod).clamp(-1.0, 1.0)) } // in rads
-    pub fn cross(self, other: Self) -> Self { Self { x: self.y * other.z - other.y * self.z, y: self.z * other.x - other.z * self.x, z: self.x * other.y - other.x * self.y } }
-    pub fn clamp(self, min: Self, max: Self) -> Self { Self { x: self.x.clamp(min.x, max.x), y: self.y.clamp(min.y, max.y), z: self.z.clamp(min.z, max.z) } }
+    pub fn length(&self) -> f32 { self.length_squared().sqrt() }
+    pub fn length_squared(&self) -> f32 { self.x * self.x + self.y * self.y + self.z * self.z }
+    pub fn normalize(&self) -> Self { self.try_normalize().unwrap_or(Self::ZERO) }
+    pub fn normalized(&self) -> Self { self.normalize() }
+    pub fn try_normalize(&self) -> Option<Self> { let len = self.length(); (len > 0.0).then(|| self / len) }
+    pub fn distance(&self, other: &Self) -> f32 { f32::sqrt(self.distance_squared(other)) }
+    pub fn distance_squared(&self, other: &Self) -> f32 { (self.x - other.x) * (self.x - other.x) + (self.y - other.y) * (self.y - other.y) + (self.z - other.z) * (self.z - other.z) }
+    pub fn dot(&self, other: &Self) -> f32 { self.x * other.x + self.y * other.y + self.z * other.z }
+    pub fn angle(&self, second: &Self) -> f32 { let prod = self.length() * second.length(); if prod == 0.0 { return 0.0 } f32::acos((self.dot(second) / prod).clamp(-1.0, 1.0)) } // in rads
+    pub fn cross(&self, other: &Self) -> Self { Self { x: self.y * other.z - other.y * self.z, y: self.z * other.x - other.z * self.x, z: self.x * other.y - other.x * self.y } }
+    pub fn clamp(&self, min: &Self, max: &Self) -> Self { Self { x: self.x.clamp(min.x, max.x), y: self.y.clamp(min.y, max.y), z: self.z.clamp(min.z, max.z) } }
     pub fn clamp_length(self, max_len: f32) -> Self { let len_sq = self.length_squared(); if len_sq > max_len * max_len { self * (max_len / len_sq.sqrt()) } else { self } }
-    pub fn project_onto(self, other: Self) -> Self { other * (self.dot(other) / other.length_squared()) }
-    pub fn reflect(self, normal: Self) -> Self { self - normal * 2.0 * self.dot(normal) }
-    pub fn refract(self, normal: Self, eta: f32) -> Self { let cos_theta = (-self).dot(normal).min(1.0); let r_out_perp = (self + normal * cos_theta) * eta; let r_out_parallel = normal * -(1.0 - r_out_perp.length_squared()).abs().sqrt(); r_out_perp + r_out_parallel }
-    pub fn is_zero(self) -> bool { self == Self::ZERO }
-    pub fn abs(self) -> Self { Self { x: self.x.abs(), y: self.y.abs(), z: self.z.abs() } }
-    pub fn floor(self) -> Self { Self { x: self.x.floor(), y: self.y.floor(), z: self.z.floor() } }
-    pub fn ceil(self) -> Self { Self { x: self.x.ceil(), y: self.y.ceil(), z: self.z.ceil() } }
-    pub fn hadamard(self, other: Self) -> Self { self * other }
-    pub fn is_finite(self) -> bool { (self.x.abs() + self.y.abs() + self.z.abs()).is_finite() }
-    pub fn approx_eq(self, other: Self, eps: f32) -> bool { (self.x - other.x).abs() < eps && (self.y - other.y).abs() < eps && (self.z - other.z).abs() < eps }
-    pub fn max_component(self) -> f32 { self.x.max(self.y).max(self.z) }
-    pub fn min_component(self) -> f32 { self.x.min(self.y).min(self.z) }
-    pub fn sum(self) -> f32 { self.x + self.y + self.z }
-    pub fn signum(self) -> Self { Self { x: self.x.signum(), y: self.y.signum(), z: self.z.signum() } }
-    pub fn move_towards(self, target: Self, max_delta: f32) -> Self { let to = target - self; let dist = to.length(); if dist <= max_delta || dist == 0.0 { target } else { self + to / dist * max_delta } }
+    pub fn project_onto(&self, other: &Self) -> Self { other * (self.dot(other) / other.length_squared()) }
+    pub fn reflect(&self, normal: &Self) -> Self { self - normal * 2.0 * self.dot(normal) }
+    pub fn refract(&self, normal: &Self, eta: f32) -> Self { let cos_theta = (-self).dot(normal).min(1.0); let r_out_perp = (self + normal * cos_theta) * eta; let r_out_parallel = normal * -(1.0 - r_out_perp.length_squared()).abs().sqrt(); r_out_perp + r_out_parallel }
+    pub fn is_zero(&self) -> bool { self.equals(&Self::ZERO) }
+    pub fn equals(&self, other: &Self) -> bool { self.x == other.x && self.y == other.y && self.z == other.z }
+    pub fn abs(&self) -> Self { Self { x: self.x.abs(), y: self.y.abs(), z: self.z.abs() } }
+    pub fn floor(&self) -> Self { Self { x: self.x.floor(), y: self.y.floor(), z: self.z.floor() } }
+    pub fn ceil(&self) -> Self { Self { x: self.x.ceil(), y: self.y.ceil(), z: self.z.ceil() } }
+    pub fn hadamard(&self, other: &Self) -> Self { self * other }
+    pub fn is_finite(&self) -> bool { (self.x.abs() + self.y.abs() + self.z.abs()).is_finite() }
+    pub fn approx_eq(&self, other: &Self, eps: f32) -> bool { (self.x - other.x).abs() < eps && (self.y - other.y).abs() < eps && (self.z - other.z).abs() < eps }
+    pub fn max_component(&self) -> f32 { self.x.max(self.y).max(self.z) }
+    pub fn min_component(&self) -> f32 { self.x.min(self.y).min(self.z) }
+    pub fn sum(&self) -> f32 { self.x + self.y + self.z }
+    pub fn signum(&self) -> Self { Self { x: self.x.signum(), y: self.y.signum(), z: self.z.signum() } }
+    pub fn move_towards(&self, target: Self, max_delta: f32) -> Self { let to = target - self; let dist = to.length(); if dist <= max_delta || dist == 0.0 { target } else { self + to / dist * max_delta } }
 
-    pub fn max(&self, second: Self) -> Self { Self { x: f32::max(self.x, second.x), y: f32::max(self.y, second.y), z: f32::max(self.z, second.z) } }
-    pub fn min(&self, second: Self) -> Self { Self { x: f32::min(self.x, second.x), y: f32::min(self.y, second.y), z: f32::min(self.z, second.z) } }
+    pub fn max(&self, second: &Self) -> Self { Self { x: f32::max(self.x, second.x), y: f32::max(self.y, second.y), z: f32::max(self.z, second.z) } }
+    pub fn min(&self, second: &Self) -> Self { Self { x: f32::min(self.x, second.x), y: f32::min(self.y, second.y), z: f32::min(self.z, second.z) } }
     pub fn max_by_len(self, second: Self) -> Self { if self.length_squared() < second.length_squared() { second } else { self } }
     pub fn min_by_len(self, second: Self) -> Self { if self.length_squared() < second.length_squared() { self } else { second } }
-    pub fn lerp(&self, second: Self, t: f32) -> Self { self + (second - self) * t }
+    pub fn lerp(&self, second: &Self, t: f32) -> Self { self + (second - self) * t }
 }
 impl Add<Vector3f> for Vector3f {
     type Output = Self;

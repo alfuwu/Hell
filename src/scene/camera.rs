@@ -8,7 +8,7 @@ pub struct CameraUBO {
     pub view_proj: [[f32; 4]; 4],
 }
 
-pub trait Camera {
+pub trait Camera: Send + Sync {
     fn view_matrix(&self) -> Matrix4f;
     fn projection_matrix(&self) -> Matrix4f;
 
@@ -112,8 +112,8 @@ impl Camera3D {
         );
 
         self.front = front.normalized();
-        self.right = self.front.cross(self.world_up).normalized();
-        self.up = self.right.cross(self.front).normalized();
+        self.right = self.front.cross(&self.world_up).normalized();
+        self.up = self.right.cross(&self.front).normalized();
     }
 }
 impl Camera for Camera3D {

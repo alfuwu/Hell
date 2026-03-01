@@ -1,9 +1,17 @@
 use std::any::TypeId;
+use crate::scene::behaviors::physics_behavior::PhysicsData;
+use crate::scene::collision::CollisionEvent;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 
-pub trait Behavior {
+pub trait Behavior: Send + Sync {
     fn update(&mut self, object: &mut Object, scene: &mut Scene, delta_time: f32);
+
+    fn on_collision(&mut self, object: &mut Object, event: &CollisionEvent) {}
+
+    fn as_physics(&self) -> Option<&PhysicsData> { None }
+    fn as_physics_mut(&mut self) -> Option<&mut PhysicsData> { None }
+
     fn equals(&self, other: &dyn Behavior) -> bool {
         true
     }

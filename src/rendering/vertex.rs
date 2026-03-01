@@ -115,11 +115,11 @@ impl Vertex {
         }
     }
     
-    pub fn flatten(vertices: &Vec<Vertex>, indices: &Vec<usize>) -> Vec<Vertex> {
+    pub fn flatten(vertices: &Vec<Vertex>, indices: &Vec<u32>) -> Vec<Vertex> {
         let mut flat_vertices: Vec<Vertex> = Vec::with_capacity(indices.len());
 
         for &idx in indices {
-            flat_vertices.push(vertices[idx].clone());
+            flat_vertices.push(vertices[idx as usize].clone());
         }
         flat_vertices
     }

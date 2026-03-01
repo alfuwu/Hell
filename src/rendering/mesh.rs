@@ -1,11 +1,13 @@
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Error, ErrorKind};
-use std::sync::Arc;
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
-use vulkano::memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter};
-use crate::rendering::texture::Texture;
+use std::io::{BufReader, BufWriter, Error, ErrorKind, Read, Write};
+use vulkano::buffer::{BufferUsage, Subbuffer};
+use vulkano::image::view::ImageView;
+use zstd::{Decoder, Encoder};
+use crate::app::Application;
+use crate::rendering::renderer::Renderer;
+use crate::rendering::texture::{SampleType, Texture};
 use crate::rendering::vertex::Vertex;
-use crate::util::binary::{read_byte, read_f32, read_fixed_string, read_i32, read_string, read_u32, write_byte, write_f32, write_fixed_string, write_i32, write_u32};
+use crate::util::binary::{read_byte, read_f32, read_i32, read_u32, write_byte, write_f32, write_fixed_string, write_i32, write_u32};
 use crate::util::vectors::Vector3f;
 
 #[derive(PartialEq)]
@@ -22,7 +24,6 @@ pub struct Mesh {
 }
 impl Mesh {
     pub fn new(
-        allocator: Arc<dyn MemoryAllocator>,
         vertices: Vec<Vertex>,
         indices: Option<Vec<u32>>,
         texture: Option<Texture>
@@ -41,7 +42,7 @@ impl Mesh {
             bounds_max.z = bounds_max.z.max(pos[2]);
         }
 
-        let mut boundless = Self::boundless(allocator, vertices, indices, texture);
+        let mut boundless = Self::boundless(vertices, indices, texture);
         boundless.bounds_min = bounds_min;
         boundless.bounds_max = bounds_max;
 
@@ -49,7 +50,6 @@ impl Mesh {
     }
 
     pub fn boundless(
-        allocator: Arc<dyn MemoryAllocator>,
         vertices: Vec<Vertex>,
         indices: Option<Vec<u32>>,
         texture: Option<Texture>
@@ -57,43 +57,18 @@ impl Mesh {
         let vertex_count = vertices.len() as u32;
         let mut index_count = 0;
 
-        let vertex_buffer = Buffer::from_iter(
-            allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter:
-                MemoryTypeFilter::PREFER_DEVICE |
-                    MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            vertices,
-        ).unwrap();
+        let mem_alloc = Application::get().renderer.as_ref().unwrap().mem_alloc.clone();
+        let vertex_buffer = Renderer::create_buffer(mem_alloc.clone(), vertices, BufferUsage::VERTEX_BUFFER);;
 
         let index_buffer = indices.map(|i| {
             index_count = i.len() as u32;
-            Buffer::from_iter(
-                allocator,
-                BufferCreateInfo {
-                    usage: BufferUsage::INDEX_BUFFER,
-                    ..Default::default()
-                },
-                AllocationCreateInfo {
-                    memory_type_filter:
-                    MemoryTypeFilter::PREFER_DEVICE |
-                        MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                },
-                i,
-            ).unwrap()
+            Renderer::create_buffer(mem_alloc, i, BufferUsage::INDEX_BUFFER)
         });
 
         Self { vertex_buffer, index_buffer, vertex_count, index_count, bounds_min: Vector3f::ZERO, bounds_max: Vector3f::ZERO, texture }
     }
 
-    pub fn cube(allocator: Arc<dyn MemoryAllocator>, texture: Option<Texture>) -> Self {
+    pub fn cube(texture: Option<Texture>) -> Self {
         let vertices = vec![
             // back face (z = -0.5), looking from outside: left=+x, right=-x
             Vertex::vertex(-0.5, -0.5, -0.5).uv(1.0, 1.0), // 0
@@ -143,20 +118,21 @@ impl Mesh {
 
         let mut vertices = vertices;
         Vertex::calculate_normals_expensively(&mut vertices, &indices);
-        Self::new(allocator, vertices, Some(indices), texture)
+        Self::new(vertices, Some(indices), texture)
     }
 
     // less expensive to render (and create) at the cost of not having proper uvs
-    pub fn simple_cube(allocator: Arc<dyn MemoryAllocator>, texture: Option<Texture>) -> Self {
-        let aaa = Vertex::vertex(-0.5, -0.5, -0.5); // 0 back bottom left
-        let baa = Vertex::vertex(0.5, -0.5, -0.5);  // 1 back bottom right
-        let aba = Vertex::vertex(-0.5, 0.5, -0.5);  // 2 back top left
-        let bba = Vertex::vertex(0.5, 0.5, -0.5);   // 3 back top right
-        let aab = Vertex::vertex(-0.5, -0.5, 0.5);  // 4 front bottom left
-        let bab = Vertex::vertex(0.5, -0.5, 0.5);   // 5 front bottom right
-        let abb = Vertex::vertex(-0.5, 0.5, 0.5);   // 6 front top left
-        let bbb = Vertex::vertex(0.5, 0.5, 0.5);    // 7 front top right
-        let mut vertices = vec![aaa, baa, aba, bba, aab, bab, abb, bbb];
+    pub fn simple_cube(texture: Option<Texture>) -> Self {
+        let mut vertices = vec![
+            Vertex::vertex(-0.5, -0.5, -0.5), // 0 back bottom left
+            Vertex::vertex(0.5, -0.5, -0.5),  // 1 back bottom right
+            Vertex::vertex(-0.5, 0.5, -0.5),  // 2 back top left
+            Vertex::vertex(0.5, 0.5, -0.5),   // 3 back top right
+            Vertex::vertex(-0.5, -0.5, 0.5),  // 4 front bottom left
+            Vertex::vertex(0.5, -0.5, 0.5),   // 5 front bottom right
+            Vertex::vertex(-0.5, 0.5, 0.5),   // 6 front top left
+            Vertex::vertex(0.5, 0.5, 0.5)     // 7 front top right
+        ];
         let indices = vec![
             0, 1, 2, // back   |\
             1, 2, 3, // back   \|
@@ -169,22 +145,25 @@ impl Mesh {
             6, 7, 2, // top    |\
             7, 2, 3, // top    \|
             0, 1, 4, // bottom |\
-            1, 4, 5, // bottom \|
+            1, 4, 5  // bottom \|
         ];
         Vertex::calculate_normals(&mut vertices, &indices);
-        Self::new(allocator, vertices, Some(indices), texture)
+        Self::new(vertices, Some(indices), texture)
     }
 
-    pub fn from_mod(file: File, allocator: Arc<dyn MemoryAllocator>) -> Result<Self, Error> {
-        let mut reader = BufReader::new(file);
+    pub fn from_mod(file: &mut File) -> Result<Self, Error> {
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
+        let mut texture: Option<Texture> = None;
 
-        let header = read_fixed_string(&mut reader, 8)?;
+        let mut header_buf = [0u8; 8];
+        file.read_exact(&mut header_buf)?;
+        let header = String::from_utf8(header_buf.to_vec()).unwrap();
         if header != "HYLEUS_M" {
             println!("Corrupted/invalid mod header: {}. Not continuing.", header);
-            return Err(Error::new(ErrorKind::InvalidData, "Corrupted/invalid mod header"))
+            return Err(Error::new(ErrorKind::InvalidData, "Corrupted/invalid mod header"));
         }
+        let mut reader = BufReader::new(Decoder::new(file)?);
         let mod_type = read_byte(&mut reader)?;
 
         let verts = read_i32(&mut reader)?;
@@ -213,12 +192,35 @@ impl Mesh {
                 vertices[i].normal = [read_f32(&mut reader)?, read_f32(&mut reader)?, read_f32(&mut reader)?];
             }
         }
+        // bit 4 = mesh has baked texture
+        if mod_type & 0x8 != 0 {
+            let sample_type = match read_byte(&mut reader)? {
+                0 => SampleType::POINT,
+                _ => SampleType::LINEAR,
+            };
+            let width  = read_u32(&mut reader)?;
+            let height = read_u32(&mut reader)?;
+            let depth = if mod_type & 0x10 != 0 { read_u32(&mut reader)? } else { 1 };
+            let pixel_count = (width * height * 4) as usize;
+            let mut pixels = vec![0u8; pixel_count];
+            let mut total_read = 0;
+            while total_read < pixel_count {
+                let n = reader.read(&mut pixels[total_read..])?;
+                if n == 0 {
+                    return Err(Error::new(ErrorKind::UnexpectedEof, "unexpected EOF reading pixels"));
+                }
+                total_read += n;
+            }
+            println!("read {} bytes, wanted to read {} bytes", total_read, pixel_count);
 
-        Ok(Self::new(allocator, vertices, if indices.len() > 0 { Some(indices) } else { None }, None))
+            let renderer = Application::get().renderer.as_ref().unwrap();
+            texture = Some(Texture::new(ImageView::new_default(renderer.create_image(pixels, width, height)).unwrap(), sample_type));
+        }
+
+        Ok(Self::new(vertices, if indices.len() > 0 { Some(indices) } else { None }, texture))
     }
 
     pub fn save(&self, file: File, bake_normals: bool, bake_texture: bool) -> Result<(), Error> {
-        let mut writer = BufWriter::new(file);
 
         let vertices: Vec<Vertex> = self.vertex_buffer.read().unwrap().to_vec();
         let indices: Option<Vec<u32>> = self.index_buffer.as_ref()
@@ -230,14 +232,18 @@ impl Mesh {
             v.normal[0] != 0.0 || v.normal[1] != 0.0 || v.normal[2] != 0.0
         });
         let has_texture = bake_texture && self.texture.is_some();
+        let has_depth = has_texture && self.texture.as_ref().unwrap().depth() > 1;
 
         let mod_type: u8 =
             (has_indices  as u8) |
             ((has_uvs     as u8) << 1) |
             ((has_normals as u8) << 2) |
-            ((has_texture as u8) << 3);
+            ((has_texture as u8) << 3) |
+            ((has_depth as u8) << 4);
 
-        write_fixed_string(&mut writer, "HYLEUS_M")?;
+        let mut plain_writer = BufWriter::new(file);
+        write_fixed_string(&mut plain_writer, "HYLEUS_M")?;
+        let mut writer = BufWriter::new(Encoder::new(plain_writer.into_inner()?, 3)?.auto_finish());
         write_byte(&mut writer, mod_type)?;
 
         // write vertex positions
@@ -274,9 +280,15 @@ impl Mesh {
         if has_texture {
             let texture = self.texture.as_ref().unwrap();
             write_byte(&mut writer, texture.sample_type.clone() as u8)?;
-            // read texture data somehow & write it
-            // need to come up with an efficient format to store it tho bc raw pixel data is very bloated
-            // could maybe gzip the file?
+            write_u32(&mut writer, texture.width())?;
+            write_u32(&mut writer, texture.height())?;
+            if has_depth {
+                write_u32(&mut writer, texture.depth())?;
+            }
+
+            let pixels: Vec<u8> = texture.read_pixels().unwrap();
+            println!("pixels: {}; expected length: {}", pixels.len(), texture.width() * texture.height() * 4);
+            writer.write_all(&pixels)?;
         }
         Ok(())
     }

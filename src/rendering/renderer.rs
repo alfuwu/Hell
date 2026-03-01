@@ -3,7 +3,7 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     device::{Device, Queue},
-    image::{sampler::{Sampler, SamplerCreateInfo}, view::ImageView, Image, ImageCreateInfo, ImageUsage},
+    image::{sampler::{Sampler, SamplerCreateInfo, Filter, SamplerMipmapMode}, view::ImageView, Image, ImageCreateInfo, ImageUsage},
     memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator},
     command_buffer::{
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo, CommandBufferAllocator},
@@ -44,13 +44,14 @@ use vulkano::{
     VulkanError,
     Validated
 };
-use vulkano::image::sampler::{Filter, SamplerMipmapMode};
 use crate::rendering::texture::SampleType;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::{fs, vs, Vertex};
 use crate::scene::camera::CameraUBO;
 use crate::util::matrices::Matrix4f;
+use crate::util::vectors::Vector3f;
 
+#[derive(Debug)]
 pub struct Renderer {
     pub device: Arc<Device>,
     pub descriptor_alloc: Arc<StandardDescriptorSetAllocator>,
@@ -260,24 +261,13 @@ impl Renderer {
             ImageCreateInfo {
                 format: Format::R8G8B8A8_UNORM,
                 extent: [width, height, 1],
-                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::TRANSFER_SRC | ImageUsage::SAMPLED,
                 ..Default::default()
             },
             AllocationCreateInfo::default(),
         ).unwrap();
 
-        let staging_buffer = Buffer::from_iter(
-            mem_alloc.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            data
-        ).unwrap();
+        let staging_buffer = Self::create_buffer(mem_alloc.clone(), data, BufferUsage::TRANSFER_SRC);
 
         let mut builder = AutoCommandBufferBuilder::primary(
             command_alloc.clone(),
@@ -314,13 +304,13 @@ impl Renderer {
                 ..Default::default()
             },
             data
-        ).expect("Failed to allocate memory for buffer")
+        ).unwrap()
     }
-    pub fn create_buffer<T, I>(&self, data: I) -> Subbuffer<[T]> where T : BufferContents, I: IntoIterator<Item = T>, I::IntoIter: ExactSizeIterator {
+    pub fn create_buffer<T, I>(mem_alloc: Arc<dyn MemoryAllocator>, data: I, usage: BufferUsage) -> Subbuffer<[T]> where T : BufferContents, I: IntoIterator<Item = T>, I::IntoIter: ExactSizeIterator {
         Buffer::from_iter(
-            self.mem_alloc.clone(),
+            mem_alloc,
             BufferCreateInfo {
-                usage: BufferUsage::UNIFORM_BUFFER,
+                usage,
                 ..Default::default()
             },
             AllocationCreateInfo {
@@ -328,7 +318,7 @@ impl Renderer {
                 ..Default::default()
             },
             data
-        ).expect("Failed to allocate memory for buffer")
+        ).unwrap()
     }
 
     pub unsafe fn draw(&mut self, scene: &Scene) -> bool {
@@ -352,7 +342,7 @@ impl Renderer {
         let mut builder = AutoCommandBufferBuilder::primary(
             self.command_alloc.clone(),
             self.queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
+            CommandBufferUsage::OneTimeSubmit,
         ).unwrap();
 
         let buffer = builder.begin_render_pass(
@@ -374,10 +364,11 @@ impl Renderer {
         unsafe {
             for object in &scene.objects {
                 let pivot_translation = Matrix4f::translation(-object.pivot);
-                let rotation = Matrix4f::rotation_euler(object.rotation.x + FRAC_PI_2, object.rotation.y, object.rotation.z);
+                let rotation = Matrix4f::rotation_euler(object.rotation.x + if object.debug { 0.0 } else { FRAC_PI_2 }, object.rotation.y, object.rotation.z);
                 let pivot_back_translation = Matrix4f::translation(object.pivot);
-                let scale = Matrix4f::scale(object.scale);
-                let translation = Matrix4f::translation(object.position);
+                let scale = Matrix4f::scale(if object.debug {object.scale} else { Vector3f::new(object.scale.z, object.scale.x, object.scale.y)}); // 90 deg rotation applied above means we have to move around the scale axes
+                let mut translation = Matrix4f::translation(object.position);
+                translation.m[1][3] *= -1.0;
 
                 let model = translation * pivot_back_translation * rotation * scale * pivot_translation;
 

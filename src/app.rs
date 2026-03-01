@@ -1,7 +1,12 @@
+use std::f32::consts::FRAC_PI_2;
 use std::fs::File;
 use std::path::Path;
-use std::sync::Arc;
+use std::ptr::null_mut;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
+use parry3d::glamx::EulerRot;
+use parry3d::math::{Rot3, Vec3};
+use parry3d::shape::SharedShape;
 use winit::{
     application::ApplicationHandler,
     event::{WindowEvent, ButtonSource, MouseButton, DeviceEvent, DeviceId},
@@ -27,12 +32,13 @@ use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
 use crate::scene::behaviors::physics_behavior::PhysicsBehavior;
-use crate::scene::behaviors::spin::SpinBehavior;
 use crate::util::noise::perlin::gradient_noise_2d::octave_noise;
 use crate::util::vectors::Vector3f;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
+
+static mut APP_PTR: *mut Application = null_mut();
 
 pub struct Application {
     pub instance: Arc<Instance>,
@@ -62,7 +68,7 @@ impl Application {
         let instance = Self::create_instance(event_loop);
         let now = Instant::now();
 
-        let app = Self {
+        let mut app = Self {
             instance,
             window: None,
             viewport: None,
@@ -142,6 +148,10 @@ impl Application {
         event_loop
     }
 
+    pub fn get() -> &'static Self {
+        unsafe { &*(APP_PTR as *const Application) }
+    }
+
     pub fn run(self, event_loop: EventLoop) {
         event_loop.run_app(self).expect("Failed to run app event loop");
     }
@@ -213,29 +223,74 @@ impl Application {
         }
 
         Vertex::calculate_normals(&mut vertices, &indices);
+        let position = Vector3f::new(-50.0, 5.0, -50.0);
+        let scale = Vector3f::uniform(10.0);
+        let rot = Rot3::from_euler(EulerRot::XYZ, FRAC_PI_2, 0.0, 0.0);
+
+        let c_verts = vertices.iter().map(|v| {
+            let p = Vec3::new(
+                v.position[0] * scale.x,
+                v.position[1] * scale.y,
+                v.position[2] * scale.z,
+            );
+            let p = rot * p;
+            Vec3::new(
+                p.x + position.x,
+                p.y + position.y,
+                p.z + position.z,
+            )
+        }).collect::<Vec<_>>();
+        let c_indices = indices.chunks(3).map(|c| { [c[0], c[1], c[2]] }).collect::<Vec<_>>();
 
         let mesh = Arc::new(Mesh::new(
-            (&renderer).mem_alloc.clone(),
             vertices,
-            Some(indices),
-            Some(Texture::point(ImageView::new_default(renderer.create_image(texture.clone(), TEX_SIZE as u32 + 1, TEX_SIZE as u32 + 1)).unwrap()))
+            Some(indices.clone()),
+            Some(Texture::linear(ImageView::new_default(renderer.create_image(texture.clone(), TEX_SIZE as u32 + 1, TEX_SIZE as u32 + 1)).unwrap()))
         ));
         self.scene.add_object(Object::new(
             mesh.clone(),
-            Vector3f::new(-5.0, 1.0, -5.0),
-            Vector3f::new(0.0, 0.0, 0.0),
-            Vector3f::uniform(10.0)
-        )/*.with_behavior(Box::new(SpinBehavior))*/);
+            Vector3f::ZERO,
+            Vector3f::ZERO,
+            scale
+        ).with_collider(SharedShape::trimesh(c_verts.clone(), c_indices.clone()).unwrap()));
 
-        let file = File::create(Path::new("mesh.mod")).unwrap();
-        mesh.save(file, true, false).unwrap();
+        let col_mesh = Arc::new(Mesh::new(
+            c_verts.iter().map(|v| { Vertex::vertex(v.x, v.y, v.z) }).collect(),
+            Some(indices),
+            None
+        ));
+        let mut obj = Object::new(
+            col_mesh,
+            Vector3f::ZERO,
+            Vector3f::ZERO,
+            Vector3f::ONE
+        );
+        obj.debug = true;
+        //self.scene.add_object(obj);
 
         self.scene.add_object(Object::new(
-            Arc::new(Mesh::cube((&renderer).mem_alloc.clone(), None)),
-            Vector3f::new(-5.0, -10.0, -5.0),
+            Arc::new(Mesh::cube(None)),
+            Vector3f::new(-2.0, 100.0, -2.0),
             Vector3f::new(0.0, 0.0, 0.0),
             Vector3f::uniform(10.0)
-        ))
+        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
+            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
+
+        self.scene.add_object(Object::new(
+            Arc::new(Mesh::cube(None)),
+            Vector3f::new(-10.0, 100.0, 0.0),
+            Vector3f::new(0.0, 0.0, 0.0),
+            Vector3f::uniform(10.0)
+        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
+            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
+
+        self.scene.add_object(Object::new(
+            Arc::new(Mesh::cube(None)),
+            Vector3f::new(15.0, 100.0, -2.0),
+            Vector3f::new(0.0, 0.0, 0.0),
+            Vector3f::uniform(10.0)
+        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
+            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
     }
 
     unsafe fn draw(&mut self) {
@@ -254,22 +309,22 @@ impl Application {
         self.scene.update(elapsed);
 
         if self.keyboard.is_pressed(KeyCode::KeyW) {
-            self.scene.camera.translate(Vector3f::Z * self.delta_time * 5.0);
+            self.scene.camera.translate(Vector3f::Z * self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyA) {
-            self.scene.camera.translate(Vector3f::X * -self.delta_time * 5.0);
+            self.scene.camera.translate(Vector3f::X * -self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyS) {
-            self.scene.camera.translate(Vector3f::Z * -self.delta_time * 5.0);
+            self.scene.camera.translate(Vector3f::Z * -self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::KeyD) {
-            self.scene.camera.translate(Vector3f::X * self.delta_time * 5.0);
+            self.scene.camera.translate(Vector3f::X * self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::Space) {
-            self.scene.camera.translate_abs(Vector3f::Y * -self.delta_time * 5.0);
+            self.scene.camera.translate_abs(Vector3f::Y * -self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::ShiftLeft) {
-            self.scene.camera.translate_abs(Vector3f::Y * self.delta_time * 5.0);
+            self.scene.camera.translate_abs(Vector3f::Y * self.delta_time * 15.0);
         }
         if self.keyboard.is_pressed(KeyCode::Escape) {
             self.mouse_locked = false;
@@ -350,6 +405,12 @@ impl ApplicationHandler for Application {
         ).unwrap();
 
         self.renderer = Some(Renderer::new(device, queues.next().unwrap(), swapchain, images, v));
+
+        unsafe {
+            if APP_PTR.is_null() {
+                APP_PTR = self as *mut Application;
+            }
+        }
 
         self.awake();
 
