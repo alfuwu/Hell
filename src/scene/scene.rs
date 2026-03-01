@@ -1,98 +1,212 @@
-use std::mem::take;
-use parry3d::math::Pose;
-use parry3d::query;
-use parry3d::shape::SharedShape;
-use crate::scene::behaviors::behavior::Behavior;
 use crate::scene::camera::{Camera, Camera3D};
-use crate::scene::collision::CollisionEvent;
+use crate::scene::behaviors::behavior::Behavior;
+use crate::scene::physics_world::PhysicsWorld;
 use crate::scene::object::Object;
 use crate::util::vectors::Vector3f;
+use std::mem::take;
+use rapier3d::dynamics::RigidBodyBuilder;
+use rapier3d::glamx::{EulerRot, Vec3};
+use rapier3d::prelude::{CollisionEvent, Pose, Rot3, Vector};
 
 pub struct Scene {
     pub objects: Vec<Object>,
-    pub camera: Box<dyn Camera>
+    pub camera: Box<dyn Camera>,
+    pub physics: PhysicsWorld
 }
 impl Scene {
-    pub fn new(aspect: f32) -> Self { Self { objects: vec![], camera: Box::new(Camera3D::new(aspect)) } }
+    pub fn new(aspect: f32) -> Self {
+        Self {
+            objects: vec![],
+            camera: Box::new(Camera3D::new(aspect)),
+            physics: PhysicsWorld::new()
+        }
+    }
 
-    pub fn add_object(&mut self, object: Object) { self.objects.push(object) }
+    pub fn add_object(&mut self, mut object: Object) {
+        if let Some(col) = object.collider.as_mut() {
+            let pos = object.position;
+            let rot = Rot3::from_euler(EulerRot::XYZ, object.rotation.x, object.rotation.y, object.rotation.z);
+
+            let iso = Pose::from_parts(
+                Vec3::new(pos.x, pos.y, pos.z),
+                rot,
+            );
+
+            let collider_builder = col.build_rapier_collider(&object.mesh, object.scale);
+
+            if col.is_static {
+                let rb = RigidBodyBuilder::fixed().pose(iso).build();
+                let rb_handle = self.physics.rigid_body_set.insert(rb);
+                let col_built = collider_builder.build();
+                let col_handle = self.physics.collider_set.insert_with_parent(
+                    col_built,
+                    rb_handle,
+                    &mut self.physics.rigid_body_set,
+                );
+                col.body_handle = Some(rb_handle);
+                col.collider_handle = Some(col_handle);
+            } else {
+                let has_physics_behavior = object.behavior.as_ref()
+                    .and_then(|b| b.as_physics())
+                    .is_some();
+
+                let mass = object.behavior.as_ref()
+                    .and_then(|b| b.as_physics())
+                    .map(|p| p.mass)
+                    .unwrap_or(1.0);
+
+                let rb = RigidBodyBuilder::dynamic()
+                    .pose(iso)
+                    .additional_mass(mass)
+                    .build();
+                let rb_handle = self.physics.rigid_body_set.insert(rb);
+                let col_built = collider_builder.build();
+                let col_handle = self.physics.collider_set.insert_with_parent(
+                    col_built,
+                    rb_handle,
+                    &mut self.physics.rigid_body_set,
+                );
+                col.body_handle = Some(rb_handle);
+                col.collider_handle = Some(col_handle);
+
+                if has_physics_behavior {
+                    if let Some(physics_data) = object.behavior.as_ref().and_then(|b| b.as_physics()) {
+                        let v = physics_data.velocity;
+                        if let Some(rb) = self.physics.rigid_body_set.get_mut(rb_handle) {
+                            rb.set_linvel(Vector::new(v.x, v.y, v.z), true);
+                        }
+                    }
+                }
+            }
+        }
+        self.objects.push(object)
+    }
 
     pub fn destroy_object(&mut self, object: &Object) {
-        if let Some(idx) = self.objects.iter().position(|item| {
-            return item == object;
-        }) {
+        if let Some(idx) = self.objects.iter().position(|item| item == object) {
+            self.remove_physics_for_index(idx);
             self.objects.remove(idx);
         }
     }
 
-    pub fn rm_object(&mut self, idx: usize) -> Object { self.objects.remove(idx) }
+    pub fn rm_object(&mut self, idx: usize) -> Object {
+        self.remove_physics_for_index(idx);
+        self.objects.remove(idx)
+    }
 
-    pub fn destroy_all_objects(&mut self) { self.objects.clear() }
+    pub fn destroy_all_objects(&mut self) {
+        for i in 0..self.objects.len() {
+            self.remove_physics_for_index(i);
+        }
+        self.objects.clear()
+    }
 
-    pub fn get_object(&self, idx: usize) -> &Object { &self.objects[idx] }
+    pub fn get_object(&self, idx: usize) -> &Object {
+        &self.objects[idx]
+    }
 
     pub fn update(&mut self, delta_time: f32) {
         let mut objects = take(&mut self.objects);
         for object in &mut objects {
             object.update(self, delta_time);
         }
-        // just in case Scene::add_object is called during a world update
         objects.append(&mut self.objects);
         self.objects = objects;
 
-        self.detect_and_dispatch_collisions();
-    }
-
-    fn detect_and_dispatch_collisions(&mut self) {
-        let len = self.objects.len();
-
-        // Collect (index, isometry, shape) to avoid borrow issues
-        let colliders: Vec<Option<(usize, Pose, SharedShape)>> =
-            self.objects.iter().enumerate().map(|(i, obj)| {
-                obj.collider.as_ref().map(|shape| (i, obj.pose(), shape.clone()))
-            }).collect();
-
-        // Pairs to dispatch: (i, CollisionEvent), (j, CollisionEvent)
-        let mut events: Vec<(usize, CollisionEvent)> = vec![];
-
-        for a in 0..len {
-            let Some((_, iso_a, shape_a)) = &colliders[a] else { continue };
-            for b in (a + 1)..len {
-                let Some((_, iso_b, shape_b)) = &colliders[b] else { continue };
-
-                if let Ok(Some(contact)) = query::contact(
-                    iso_a, shape_a.as_ref(),
-                    iso_b, shape_b.as_ref(),
-                    0.0,  // prediction distance; use >0 for speculative contacts
-                ) {
-                    let depth = -contact.dist; // negative dist = penetration
-                    if depth < 0.0 { continue; } // no actual overlap
-
-                    let normal_a = Vector3f::new(
-                        contact.normal1.x,
-                        contact.normal1.y,
-                        contact.normal1.z,
-                    );
-                    let normal_b = Vector3f::new(
-                        contact.normal2.x,
-                        contact.normal2.y,
-                        contact.normal2.z,
-                    );
-
-                    events.push((a, CollisionEvent { other_idx: b, normal: normal_a, depth }));
-                    events.push((b, CollisionEvent { other_idx: a, normal: normal_b, depth }));
+        for object in &mut self.objects {
+            if let (Some(col), Some(behavior)) = (object.collider.as_ref(), object.behavior.as_ref()) {
+                if let (Some(rb_handle), Some(physics_data)) = (col.body_handle, behavior.as_physics()) {
+                    if let Some(rb) = self.physics.rigid_body_set.get_mut(rb_handle) {
+                        let v = physics_data.velocity;
+                        rb.set_linvel(Vector::new(v.x, v.y, v.z), true);
+                    }
                 }
             }
         }
 
-        // Dispatch events — borrow each object mutably one at a time
-        for (idx, event) in events {
-            let obj = &mut self.objects[idx];
-            if let Some(behavior) = obj.behavior.as_mut() {
-                let behavior_ptr: *mut Box<dyn Behavior> = behavior;
-                unsafe {
-                    (*behavior_ptr).on_collision(obj, &event);
+        self.physics.step(delta_time);
+
+        for object in &mut self.objects {
+            if let Some(col) = object.collider.as_ref() {
+                if let Some(rb_handle) = col.body_handle {
+                    if col.is_static { continue; }
+                    if let Some(rb) = self.physics.rigid_body_set.get(rb_handle) {
+                        let t = rb.translation();
+                        object.position = Vector3f::new(t.x, t.y, t.z);
+
+                        let r = rb.rotation().to_euler(EulerRot::XYZ);
+                        object.rotation = Vector3f::from_array(r.into());
+
+                        let lv = rb.linvel();
+                        if let Some(behavior) = object.behavior.as_mut() {
+                            if let Some(physics_data) = behavior.as_physics_mut() {
+                                physics_data.velocity = Vector3f::new(lv.x, lv.y, lv.z);
+                            }
+                        }
+                    }
                 }
+            }
+        }
+
+        self.dispatch_collisions();
+    }
+
+    fn dispatch_collisions(&mut self) {
+        while let Ok(event) = self.physics.collision_recv.try_recv() {
+            let (h1, h2, started) = match event {
+                CollisionEvent::Started(h1, h2, _) => (h1, h2, true),
+                CollisionEvent::Stopped(h1, h2, _) => (h1, h2, false),
+            };
+            if !started { continue; }
+
+            let idx1 = self.objects.iter().position(|o| {
+                o.collider.as_ref().and_then(|c| c.collider_handle) == Some(h1)
+                    || o.collider.as_ref().and_then(|c| c.collider_handle) == Some(h2)
+            });
+            let idx2 = self.objects.iter().position(|o| {
+                (o.collider.as_ref().and_then(|c| c.collider_handle) == Some(h2)
+                    || o.collider.as_ref().and_then(|c| c.collider_handle) == Some(h1))
+                    && Some(o as *const _) != idx1.map(|i| &self.objects[i] as *const _)
+            });
+
+            if let (Some(i), Some(other_idx)) = (idx1, idx2) {
+                let (normal, depth) = self.physics.narrow_phase
+                    .contact_pair(h1, h2)
+                    .and_then(|pair| {
+                        pair.manifolds.iter()
+                            .flat_map(|m| {
+                                let n = m.data.normal;
+                                m.contacts().iter().map(move |pt| (Vector3f::new(n.x, n.y, n.z), -pt.dist))
+                            })
+                            .next()
+                    }).unwrap_or((Vector3f::ZERO, 0.0));
+
+                let event = crate::scene::collision::CollisionEvent {
+                    other_idx,
+                    normal,
+                    depth
+                };
+                let obj = &mut self.objects[i];
+                if let Some(behavior) = obj.behavior.as_mut() {
+                    let ptr: *mut Box<dyn Behavior> = behavior;
+                    unsafe { (*ptr).on_collision(obj, &event); }
+                }
+            }
+        }
+    }
+
+    fn remove_physics_for_index(&mut self, idx: usize) {
+        let obj = &self.objects[idx];
+        if let Some(col) = &obj.collider {
+            if let Some(rb_handle) = col.body_handle {
+                self.physics.rigid_body_set.remove(
+                    rb_handle,
+                    &mut self.physics.island_manager,
+                    &mut self.physics.collider_set,
+                    &mut self.physics.impulse_joint_set,
+                    &mut self.physics.multibody_joint_set,
+                    true,
+                );
             }
         }
     }

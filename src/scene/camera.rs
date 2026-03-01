@@ -1,6 +1,6 @@
-use vulkano::buffer::BufferContents;
 use crate::util::matrices::Matrix4f;
 use crate::util::vectors::Vector3f;
+use vulkano::buffer::BufferContents;
 
 #[repr(C)]
 #[derive(BufferContents, Clone, Copy)]
@@ -19,7 +19,7 @@ pub trait Camera: Send + Sync {
     fn translate(&mut self, translation: Vector3f);
     fn translate_abs(&mut self, translation: Vector3f);
     fn rotate(&mut self, yaw: f32, pitch: f32);
-    
+
     fn set_aspect_ratio(&mut self, aspect: f32);
 }
 
@@ -27,7 +27,7 @@ pub struct Camera2D {
     pub position: Vector3f,
     pub zoom: f32,
     pub viewport_width: f32,
-    pub viewport_height: f32
+    pub viewport_height: f32,
 }
 impl Camera2D {
     pub fn new(width: f32, height: f32) -> Self {
@@ -47,23 +47,18 @@ impl Camera for Camera2D {
         let half_w = self.viewport_width * 0.5 / self.zoom;
         let half_h = self.viewport_height * 0.5 / self.zoom;
 
-        Matrix4f::orthographic(
-            -half_w,
-            half_w,
-            -half_h,
-            half_h,
-            -100.0,
-            100.0,
-        )
+        Matrix4f::orthographic(-half_w, half_w, -half_h, half_h, -100.0, 100.0)
     }
 
     fn translate(&mut self, translation: Vector3f) {
         self.position += translation;
     }
-    fn translate_abs(&mut self, translation: Vector3f) { self.translate(translation); }
-    fn rotate(&mut self, yaw: f32, pitch: f32) { }
-    
-    fn set_aspect_ratio(&mut self, aspect: f32) { }
+    fn translate_abs(&mut self, translation: Vector3f) {
+        self.translate(translation);
+    }
+    fn rotate(&mut self, yaw: f32, pitch: f32) {}
+
+    fn set_aspect_ratio(&mut self, aspect: f32) {}
 }
 
 pub struct Camera3D {
@@ -118,20 +113,20 @@ impl Camera3D {
 }
 impl Camera for Camera3D {
     fn view_matrix(&self) -> Matrix4f {
-        Matrix4f::look_at(
-            self.position,
-            self.position + self.front,
-            self.up,
-        )
+        Matrix4f::look_at(self.position, self.position + self.front, self.up)
     }
-    fn projection_matrix(&self) -> Matrix4f { Matrix4f::perspective(self.fov, self.aspect, self.near, self.far) }
+    fn projection_matrix(&self) -> Matrix4f {
+        Matrix4f::perspective(self.fov, self.aspect, self.near, self.far)
+    }
 
     fn translate(&mut self, translation: Vector3f) {
         self.position += self.right * translation.x;
         self.position += self.up * translation.y;
         self.position += self.front * translation.z;
     }
-    fn translate_abs(&mut self, translation: Vector3f) { self.position += translation; }
+    fn translate_abs(&mut self, translation: Vector3f) {
+        self.position += translation;
+    }
     fn rotate(&mut self, yaw_offset: f32, pitch_offset: f32) {
         self.yaw += yaw_offset;
         self.pitch += pitch_offset;
@@ -171,20 +166,26 @@ impl OrbitalCamera3D {
     }
 }
 impl Camera for OrbitalCamera3D {
-    fn view_matrix(&self) -> Matrix4f { Matrix4f::look_at(self.position, self.target, self.up) }
-    fn projection_matrix(&self) -> Matrix4f { Matrix4f::perspective(self.fov, self.aspect, self.near, self.far) }
+    fn view_matrix(&self) -> Matrix4f {
+        Matrix4f::look_at(self.position, self.target, self.up)
+    }
+    fn projection_matrix(&self) -> Matrix4f {
+        Matrix4f::perspective(self.fov, self.aspect, self.near, self.far)
+    }
 
     fn translate(&mut self, translation: Vector3f) {
         self.position += translation;
         self.target += translation;
     }
-    fn translate_abs(&mut self, translation: Vector3f) { self.position += translation; }
+    fn translate_abs(&mut self, translation: Vector3f) {
+        self.position += translation;
+    }
     fn rotate(&mut self, yaw: f32, pitch: f32) {
         let direction = self.position - self.target;
         let radius = direction.length();
 
         let mut theta = direction.z.atan2(direction.x); // yaw
-        let mut phi = (direction.y / radius).acos();    // pitch
+        let mut phi = (direction.y / radius).acos(); // pitch
 
         theta += yaw;
         phi += pitch;

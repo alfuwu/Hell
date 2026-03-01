@@ -1,8 +1,8 @@
 mod app;
-mod util;
 mod input;
 mod rendering;
 mod scene;
+mod util;
 
 use app::Application;
 

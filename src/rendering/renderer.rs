@@ -1,55 +1,58 @@
+use crate::rendering::texture::SampleType;
+use crate::rendering::vertex::{Vertex, fs, vs};
+use crate::scene::camera::CameraUBO;
+use crate::scene::scene::Scene;
+use crate::util::matrices::Matrix4f;
+use crate::util::vectors::Vector3f;
 use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 use vulkano::{
+    Validated, VulkanError,
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    device::{Device, Queue},
-    image::{sampler::{Sampler, SamplerCreateInfo, Filter, SamplerMipmapMode}, view::ImageView, Image, ImageCreateInfo, ImageUsage},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator},
     command_buffer::{
-        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo, CommandBufferAllocator},
-        PrimaryCommandBufferAbstract,
-        AutoCommandBufferBuilder,
-        CommandBufferUsage,
-        RenderPassBeginInfo,
-        SubpassBeginInfo,
-        SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo,
+        PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo, SubpassContents,
         SubpassEndInfo,
-        CopyBufferToImageInfo
+        allocator::{
+            CommandBufferAllocator, StandardCommandBufferAllocator,
+            StandardCommandBufferAllocatorCreateInfo,
+        },
+    },
+    descriptor_set::{
+        DescriptorSet, WriteDescriptorSet,
+        allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo},
+    },
+    device::{Device, Queue},
+    format::Format,
+    image::{
+        Image, ImageCreateInfo, ImageUsage,
+        sampler::{Filter, Sampler, SamplerCreateInfo, SamplerMipmapMode},
+        view::ImageView,
+    },
+    memory::allocator::{
+        AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter, StandardMemoryAllocator,
     },
     pipeline::{
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+        PipelineShaderStageCreateInfo,
         graphics::{
-            vertex_input::{Vertex as VulkanVertex, VertexDefinition},
-            viewport::{Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
-            depth_stencil::{DepthStencilState, DepthState},
+            depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::RasterizationState,
-            GraphicsPipelineCreateInfo
+            vertex_input::{Vertex as VulkanVertex, VertexDefinition},
+            viewport::{Viewport, ViewportState},
         },
         layout::{PipelineDescriptorSetLayoutCreateInfo, PushConstantRange},
-        GraphicsPipeline,
-        PipelineLayout,
-        PipelineShaderStageCreateInfo,
-        PipelineBindPoint,
-        Pipeline
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    swapchain::{acquire_next_image, Swapchain, SwapchainPresentInfo},
-    descriptor_set::{allocator::{StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo}, DescriptorSet, WriteDescriptorSet},
     shader::{ShaderModule, ShaderStages},
-    format::Format,
-    sync::GpuFuture,
     single_pass_renderpass,
-    VulkanError,
-    Validated
+    swapchain::{Swapchain, SwapchainPresentInfo, acquire_next_image},
+    sync::GpuFuture,
 };
-use crate::rendering::texture::SampleType;
-use crate::scene::scene::Scene;
-use crate::rendering::vertex::{fs, vs, Vertex};
-use crate::scene::camera::CameraUBO;
-use crate::util::matrices::Matrix4f;
-use crate::util::vectors::Vector3f;
 
 #[derive(Debug)]
 pub struct Renderer {
@@ -70,10 +73,16 @@ pub struct Renderer {
     pub framebuffers: Vec<Arc<Framebuffer>>,
     pub pipeline: Arc<GraphicsPipeline>,
 
-    pub missing_texture: Arc<ImageView>
+    pub missing_texture: Arc<ImageView>,
 }
 impl Renderer {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>, swapchain: Arc<Swapchain>, images: Vec<Arc<Image>>, viewport: Viewport) -> Self {
+    pub fn new(
+        device: Arc<Device>,
+        queue: Arc<Queue>,
+        swapchain: Arc<Swapchain>,
+        images: Vec<Arc<Image>>,
+        viewport: Viewport,
+    ) -> Self {
         let render_pass = Self::get_render_pass(&device, &swapchain);
 
         let vs = vs::load(device.clone()).unwrap();
@@ -82,14 +91,14 @@ impl Renderer {
         let mem_alloc = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_alloc = Arc::new(StandardCommandBufferAllocator::new(
             device.clone(),
-            StandardCommandBufferAllocatorCreateInfo::default()
+            StandardCommandBufferAllocatorCreateInfo::default(),
         ));
 
         let renderer = Self {
             device: device.clone(),
             descriptor_alloc: Arc::new(StandardDescriptorSetAllocator::new(
                 device.clone(),
-                StandardDescriptorSetAllocatorCreateInfo::default()
+                StandardDescriptorSetAllocatorCreateInfo::default(),
             )),
             queue: queue.clone(),
             mem_alloc: mem_alloc.clone(),
@@ -98,10 +107,8 @@ impl Renderer {
             vs: vs.clone(),
             fs: fs.clone(),
 
-            linear_sampler: Sampler::new(
-                device.clone(),
-                SamplerCreateInfo::simple_repeat_linear(),
-            ).unwrap(),
+            linear_sampler: Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())
+                .unwrap(),
             point_sampler: Sampler::new(
                 device.clone(),
                 SamplerCreateInfo {
@@ -110,23 +117,28 @@ impl Renderer {
                     mipmap_mode: SamplerMipmapMode::Nearest,
                     ..SamplerCreateInfo::simple_repeat_linear()
                 },
-            ).unwrap(),
+            )
+            .unwrap(),
             swapchain,
             images: images.clone(),
             render_pass: render_pass.clone(),
             framebuffers: Self::get_framebuffers(&images, &render_pass.clone(), mem_alloc.clone()),
             pipeline: Self::get_pipeline(&device, viewport, &vs, &fs, &render_pass),
 
-            missing_texture: Self::create_missing_texture(mem_alloc, command_alloc, queue)
+            missing_texture: Self::create_missing_texture(mem_alloc, command_alloc, queue),
         };
         renderer
     }
 
-    pub(crate) fn create_missing_texture(mem_alloc: Arc<dyn MemoryAllocator>, command_alloc: Arc<dyn CommandBufferAllocator>, queue: Arc<Queue>) -> Arc<ImageView> {
+    pub(crate) fn create_missing_texture(
+        mem_alloc: Arc<dyn MemoryAllocator>,
+        command_alloc: Arc<dyn CommandBufferAllocator>,
+        queue: Arc<Queue>,
+    ) -> Arc<ImageView> {
         let data: [u8; 16] = [
             255, 0, 255, 255, // purple
-            0,   0,   0, 255, // black
-            0,   0,   0, 255, // black
+            0, 0, 0, 255, // black
+            0, 0, 0, 255, // black
             255, 0, 255, 255, // purple
         ];
 
@@ -134,7 +146,10 @@ impl Renderer {
         ImageView::new_default(image).unwrap()
     }
 
-    pub(crate) fn get_render_pass(device: &Arc<Device>, swapchain: &Arc<Swapchain>) -> Arc<RenderPass> {
+    pub(crate) fn get_render_pass(
+        device: &Arc<Device>,
+        swapchain: &Arc<Swapchain>,
+    ) -> Arc<RenderPass> {
         single_pass_renderpass!(
             device.clone(),
             attachments: {
@@ -155,35 +170,45 @@ impl Renderer {
                 color: [color],
                 depth_stencil: { depth },
             },
-        ).unwrap()
+        )
+        .unwrap()
     }
 
-    pub(crate) fn get_framebuffers(images: &Vec<Arc<Image>>, render_pass: &Arc<RenderPass>, mem_alloc: Arc<dyn MemoryAllocator>) -> Vec<Arc<Framebuffer>> {
-        images.iter().map(|image| {
-            let dimensions = image.extent();
+    pub(crate) fn get_framebuffers(
+        images: &Vec<Arc<Image>>,
+        render_pass: &Arc<RenderPass>,
+        mem_alloc: Arc<dyn MemoryAllocator>,
+    ) -> Vec<Arc<Framebuffer>> {
+        images
+            .iter()
+            .map(|image| {
+                let dimensions = image.extent();
 
-            let depth_image = Image::new(
-                mem_alloc.clone(),
-                ImageCreateInfo {
-                    format: Format::D16_UNORM,
-                    extent: dimensions,
-                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            ).unwrap();
+                let depth_image = Image::new(
+                    mem_alloc.clone(),
+                    ImageCreateInfo {
+                        format: Format::D16_UNORM,
+                        extent: dimensions,
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap();
 
-            let color_view = ImageView::new_default(image.clone()).unwrap();
-            let depth_view = ImageView::new_default(depth_image).unwrap();
+                let color_view = ImageView::new_default(image.clone()).unwrap();
+                let depth_view = ImageView::new_default(depth_image).unwrap();
 
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![color_view, depth_view],
-                    ..Default::default()
-                },
-            ).unwrap()
-        }).collect()
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![color_view, depth_view],
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect()
     }
 
     pub(crate) fn get_pipeline(
@@ -196,9 +221,7 @@ impl Renderer {
         let vs = vs.entry_point("main").unwrap();
         let fs = fs.entry_point("main").unwrap();
 
-        let vertex_input_state = Vertex::per_vertex()
-            .definition(&vs)
-            .unwrap();
+        let vertex_input_state = Vertex::per_vertex().definition(&vs).unwrap();
 
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
@@ -215,10 +238,7 @@ impl Renderer {
             size: size_of::<[[f32; 4]; 4]>() as u32,
         }];
 
-        let layout = PipelineLayout::new(
-            device.clone(),
-            create_info,
-        ).unwrap();
+        let layout = PipelineLayout::new(device.clone(), create_info).unwrap();
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
@@ -246,7 +266,8 @@ impl Renderer {
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(layout)
             },
-        ).unwrap()
+        )
+        .unwrap()
     }
     pub(crate) fn upload_gpu_image(
         mem_alloc: Arc<dyn MemoryAllocator>,
@@ -254,7 +275,7 @@ impl Renderer {
         queue: Arc<Queue>,
         data: Vec<u8>,
         width: u32,
-        height: u32
+        height: u32,
     ) -> Arc<Image> {
         let image = Image::new(
             mem_alloc.clone(),
@@ -272,14 +293,13 @@ impl Renderer {
         let mut builder = AutoCommandBufferBuilder::primary(
             command_alloc.clone(),
             queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit
+            CommandBufferUsage::OneTimeSubmit,
         ).unwrap();
 
-        builder
-            .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                staging_buffer.clone(),
-                image.clone()
-            )).unwrap();
+        builder.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+            staging_buffer.clone(),
+            image.clone(),
+        )).unwrap();
 
         builder.build().unwrap()
             .execute(queue.clone()).unwrap()
@@ -290,9 +310,19 @@ impl Renderer {
     }
 
     pub fn create_image(&self, data: Vec<u8>, width: u32, height: u32) -> Arc<Image> {
-        Self::upload_gpu_image(self.mem_alloc.clone(), self.command_alloc.clone(), self.queue.clone(), data, width, height)
+        Self::upload_gpu_image(
+            self.mem_alloc.clone(),
+            self.command_alloc.clone(),
+            self.queue.clone(),
+            data,
+            width,
+            height,
+        )
     }
-    pub fn create_buffer_single<T>(&self, data: T) -> Subbuffer<T> where T : BufferContents {
+    pub fn create_buffer_single<T>(&self, data: T) -> Subbuffer<T>
+    where
+        T: BufferContents,
+    {
         Buffer::from_data(
             self.mem_alloc.clone(),
             BufferCreateInfo {
@@ -300,13 +330,24 @@ impl Renderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            data
-        ).unwrap()
+            data,
+        )
+        .unwrap()
     }
-    pub fn create_buffer<T, I>(mem_alloc: Arc<dyn MemoryAllocator>, data: I, usage: BufferUsage) -> Subbuffer<[T]> where T : BufferContents, I: IntoIterator<Item = T>, I::IntoIter: ExactSizeIterator {
+    pub fn create_buffer<T, I>(
+        mem_alloc: Arc<dyn MemoryAllocator>,
+        data: I,
+        usage: BufferUsage,
+    ) -> Subbuffer<[T]>
+    where
+        T: BufferContents,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
         Buffer::from_iter(
             mem_alloc,
             BufferCreateInfo {
@@ -314,11 +355,13 @@ impl Renderer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            data
-        ).unwrap()
+            data,
+        )
+        .unwrap()
     }
 
     pub unsafe fn draw(&mut self, scene: &Scene) -> bool {
@@ -352,7 +395,7 @@ impl Renderer {
                     Some(1.0.into()),                  // depth
                 ],
                 ..RenderPassBeginInfo::framebuffer(
-                    self.framebuffers[image_index as usize].clone()
+                    self.framebuffers[image_index as usize].clone(),
                 )
             },
             SubpassBeginInfo {
@@ -364,21 +407,33 @@ impl Renderer {
         unsafe {
             for object in &scene.objects {
                 let pivot_translation = Matrix4f::translation(-object.pivot);
-                let rotation = Matrix4f::rotation_euler(object.rotation.x + if object.debug { 0.0 } else { FRAC_PI_2 }, object.rotation.y, object.rotation.z);
+                let rotation = Matrix4f::rotation_euler(
+                    object.rotation.x,
+                    object.rotation.y,
+                    object.rotation.z,
+                );
                 let pivot_back_translation = Matrix4f::translation(object.pivot);
-                let scale = Matrix4f::scale(if object.debug {object.scale} else { Vector3f::new(object.scale.z, object.scale.x, object.scale.y)}); // 90 deg rotation applied above means we have to move around the scale axes
+                let scale = Matrix4f::scale(object.scale);
                 let mut translation = Matrix4f::translation(object.position);
                 translation.m[1][3] *= -1.0;
 
                 let model = translation * pivot_back_translation * rotation * scale * pivot_translation;
 
                 let image_sampler = if let Some(tex) = object.mesh.texture.clone() {
-                    WriteDescriptorSet::image_view_sampler(1, tex.texture, match tex.sample_type {
-                        SampleType::POINT => self.point_sampler.clone(),
-                        SampleType::LINEAR => self.linear_sampler.clone(),
-                    })
+                    WriteDescriptorSet::image_view_sampler(
+                        1,
+                        tex.texture,
+                        match tex.sample_type {
+                            SampleType::POINT => self.point_sampler.clone(),
+                            SampleType::LINEAR => self.linear_sampler.clone(),
+                        },
+                    )
                 } else {
-                    WriteDescriptorSet::image_view_sampler(1, self.missing_texture.clone(), self.point_sampler.clone())
+                    WriteDescriptorSet::image_view_sampler(
+                        1,
+                        self.missing_texture.clone(),
+                        self.point_sampler.clone(),
+                    )
                 };
 
                 let descriptor_set = DescriptorSet::new(
@@ -386,27 +441,23 @@ impl Renderer {
                     layout.clone(),
                     [
                         WriteDescriptorSet::buffer(0, camera_buffer.clone()),
-                        image_sampler
+                        image_sampler,
                     ],
-                    []
+                    [],
                 ).unwrap();
 
-                buffer
-                    .bind_pipeline_graphics(self.pipeline.clone()).unwrap()
+                buffer.bind_pipeline_graphics(self.pipeline.clone()).unwrap()
                     .bind_descriptor_sets(
                         PipelineBindPoint::Graphics,
                         self.pipeline.layout().clone(),
                         0, // set number
                         descriptor_set.clone(),
                     ).unwrap()
-                    .push_constants(
-                        self.pipeline.layout().clone(),
-                        0,
-                        model.to_cols_array_2d()
-                    ).unwrap()
+                    .push_constants(self.pipeline.layout().clone(), 0, model.to_cols_array_2d()).unwrap()
                     .bind_vertex_buffers(0, object.mesh.vertex_buffer.clone()).unwrap();
                 if let Some(idx_buffer) = object.mesh.index_buffer.clone() {
-                    buffer.bind_index_buffer(idx_buffer).unwrap()
+                    buffer
+                        .bind_index_buffer(idx_buffer).unwrap()
                         .draw_indexed(object.mesh.index_count, 1, 0, 0, 0).unwrap();
                 } else {
                     buffer.draw(object.mesh.vertex_count, 1, 0, 0).unwrap();
@@ -422,18 +473,16 @@ impl Renderer {
             .then_execute(self.queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    self.swapchain.clone(),
-                    image_index,
-                ),
+                SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_index),
             )
             .then_signal_fence_and_flush();
 
         match execution.map_err(Validated::unwrap) {
             Ok(future) => future.wait(None).unwrap(),
             Err(VulkanError::OutOfDate) => recreate_swapchain = true,
-            Err(e) => println!("Failed to flush future: {e}")
+            Err(e) => println!("Failed to flush future: {e}"),
         }
+
         recreate_swapchain
     }
 }

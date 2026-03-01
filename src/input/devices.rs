@@ -9,15 +9,17 @@ pub struct Mouse {
     pub right: bool,
     pub middle: bool,
     pub back: bool,
-    pub forward: bool
+    pub forward: bool,
 }
 impl Mouse {
-    pub fn primary_button(&self) -> bool { self.left || self.right || self.middle }
+    pub fn primary_button(&self) -> bool {
+        self.left || self.right || self.middle
+    }
 }
 
 #[derive(Clone, Default)]
 pub struct Keyboard {
-    pub keys: HashMap<KeyCode, bool>
+    pub keys: HashMap<KeyCode, bool>,
 }
 impl Keyboard {
     pub fn is_pressed(&self, key: KeyCode) -> bool {

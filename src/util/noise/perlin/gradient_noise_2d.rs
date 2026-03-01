@@ -1,3 +1,4 @@
+use crate::util::noise::noise_period::NoisePeriod;
 /// MIT License
 ///
 /// Copyright(c) 2026 krubbles, alfuwu
@@ -19,9 +20,7 @@
 /// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 /// SOFTWARE.
-
 use crate::util::noise::{constants, noise_util};
-use crate::util::noise::noise_period::NoisePeriod;
 
 pub fn i_noise(x: impl Into<i32>, y: impl Into<i32>, seed: i32) -> f32 {
     noise(x.into() as f32 + 0.5, y.into() as f32 + 0.5, seed)
@@ -122,17 +121,22 @@ pub const fn gradient_noise_vec2(x: f32, y: f32, seed: i32) -> (f32, f32) {
     iy = iy.wrapping_add(constants::OFFSET);
     ix = ix.wrapping_add(constants::SEED_PRIME.wrapping_mul(seed)); // add seed before hashing to propagate its effect
 
-    let p1 = ix.wrapping_mul(constants::X_PRIME1)
+    let p1 = ix
+        .wrapping_mul(constants::X_PRIME1)
         .wrapping_add(iy.wrapping_mul(constants::Y_PRIME1));
-    let p2 = ix.wrapping_mul(constants::X_PRIME2)
+    let p2 = ix
+        .wrapping_mul(constants::X_PRIME2)
         .wrapping_add(iy.wrapping_mul(constants::Y_PRIME2));
 
     let ll = p1.wrapping_mul(p2);
-    let lr = p1.wrapping_add(constants::X_PRIME1)
+    let lr = p1
+        .wrapping_add(constants::X_PRIME1)
         .wrapping_mul(p2.wrapping_add(constants::X_PRIME2));
-    let ul = p1.wrapping_add(constants::Y_PRIME1)
+    let ul = p1
+        .wrapping_add(constants::Y_PRIME1)
         .wrapping_mul(p2.wrapping_add(constants::Y_PRIME2));
-    let ur = p1.wrapping_add(constants::X_PLUS_Y_PRIME1)
+    let ur = p1
+        .wrapping_add(constants::X_PLUS_Y_PRIME1)
         .wrapping_mul(p2.wrapping_add(constants::X_PLUS_Y_PRIME2));
 
     let x_out = interpolate_gradients(ll, lr, ul, ur, fx, fy);
@@ -150,12 +154,7 @@ pub const fn gradient_noise_vec2(x: f32, y: f32, seed: i32) -> (f32, f32) {
 }
 
 /// Periodic variant of -1 to 1 gradient noise.
-pub const fn gradient_noise_periodic(
-    x: f32,
-    y: f32,
-    period: &NoisePeriod,
-    seed: i32,
-) -> f32 {
+pub const fn gradient_noise_periodic(x: f32, y: f32, period: &NoisePeriod, seed: i32) -> f32 {
     let mut ix = if x > 0.0 { x as i32 } else { x as i32 - 1 };
     let mut iy = if y > 0.0 { y as i32 } else { y as i32 - 1 };
     let fx = x - ix as f32;
@@ -206,8 +205,7 @@ pub const fn gradient_noise_periodic_vec2(
     let fx = x - ix as f32;
     let fy = y - iy as f32;
 
-    let seed = seed
-        .wrapping_mul(constants::SEED_PRIME << constants::PERIOD_SHIFT);
+    let seed = seed.wrapping_mul(constants::SEED_PRIME << constants::PERIOD_SHIFT);
 
     ix = ix.wrapping_add(seed);
     iy = iy.wrapping_add(seed);
@@ -243,8 +241,7 @@ pub const fn gradient_noise_periodic_vec2(
 
 #[inline(always)]
 const fn grad(hash: i32, dx: f32, dy: f32) -> f32 {
-    let x_hash =
-        (hash & constants::GRAD_AND_MASK) | constants::GRAD_OR_MASK;
+    let x_hash = (hash & constants::GRAD_AND_MASK) | constants::GRAD_OR_MASK;
     let y_hash = x_hash << constants::GRAD_SHIFT1;
 
     let gx = f32::from_bits(x_hash as u32);
@@ -308,8 +305,7 @@ const fn eval_gradient(hash: i32, fx: f32, fy: f32) -> f32 {
     // the mask has a second copy of the exponent bits in insignificant bits
     // of the mantissa, so bit-shifting the masked hash to align the second exponent
     // gives a second random float in the same range as the first.
-    let x_hash =
-        (hash & constants::GRAD_AND_MASK) | constants::GRAD_OR_MASK;
+    let x_hash = (hash & constants::GRAD_AND_MASK) | constants::GRAD_OR_MASK;
     let y_hash = x_hash << constants::GRAD_SHIFT1;
 
     let gx = f32::from_bits(x_hash as u32);

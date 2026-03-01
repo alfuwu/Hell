@@ -23,7 +23,7 @@
 pub struct NoisePeriod {
     pub(crate) xf: i32,
     pub(crate) yf: i32,
-    zf: i32
+    zf: i32,
 }
 impl NoisePeriod {
     pub const NULL: Self = Self::new(0, 0, 0);
@@ -33,16 +33,16 @@ impl NoisePeriod {
         Self {
             xf: Self::get_factor(x_period),
             yf: Self::get_factor(y_period),
-            zf: Self::get_factor(z_period)
+            zf: Self::get_factor(z_period),
         }
     }
 
     const fn get_factor(period: i32) -> i32 {
         if period == 0 {
-            return 0
+            return 0;
         }
         if period <= 1 {
-            return -1
+            return -1;
         }
         let mut factor: u32 = u32::MAX / (period as u32);
         factor += 1;
@@ -50,13 +50,25 @@ impl NoisePeriod {
     }
 
     pub fn x_period(&self) -> i32 {
-        if self.xf == 0 { 0 } else { (u32::MAX / (self.xf as u32) + 1) as i32 }
+        if self.xf == 0 {
+            0
+        } else {
+            (u32::MAX / (self.xf as u32) + 1) as i32
+        }
     }
     pub fn y_period(&self) -> i32 {
-        if self.zf == 0 { 0 } else { (u32::MAX / (self.yf as u32) + 1) as i32 }
+        if self.zf == 0 {
+            0
+        } else {
+            (u32::MAX / (self.yf as u32) + 1) as i32
+        }
     }
     pub fn z_period(&self) -> i32 {
-        if self.zf == 0 { 0 } else { (u32::MAX / (self.zf as u32) + 1) as i32 }
+        if self.zf == 0 {
+            0
+        } else {
+            (u32::MAX / (self.zf as u32) + 1) as i32
+        }
     }
 
     pub fn is_null(&self) -> bool {

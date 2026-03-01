@@ -1,4 +1,4 @@
-pub mod vectors;
+pub mod binary;
 pub mod matrices;
 pub mod noise;
-pub mod binary;
+pub mod vectors;

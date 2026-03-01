@@ -1,9 +1,11 @@
 pub struct Color {
-    pub packed: u32
+    pub packed: u32,
 }
 impl Color {
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { packed: ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32) }
+        Self {
+            packed: ((r as u32) << 24) | ((g as u32) << 16) | ((b as u32) << 8) | (a as u32),
+        }
     }
 
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
@@ -32,7 +34,7 @@ impl Color {
             (r + (other.r() as f32 - r) * t) as u8,
             (g + (other.g() as f32 - g) * t) as u8,
             (b + (other.b() as f32 - b) * t) as u8,
-            (a + (other.a() as f32 - a) * t) as u8
+            (a + (other.a() as f32 - a) * t) as u8,
         )
     }
 }

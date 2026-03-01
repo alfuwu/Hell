@@ -1,17 +1,19 @@
+use crate::app::Application;
+use crate::rendering::renderer::Renderer;
 use std::error::Error;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, Subbuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo,
+};
 use vulkano::image::view::ImageView;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use crate::app::Application;
-use crate::rendering::renderer::Renderer;
 
 #[derive(Clone, PartialEq)]
 pub enum SampleType {
     POINT,
-    LINEAR
+    LINEAR,
 }
 
 #[derive(Clone, PartialEq)]
@@ -21,15 +23,24 @@ pub struct Texture {
 }
 impl Texture {
     pub const fn new(texture: Arc<ImageView>, sample_type: SampleType) -> Self {
-        Self { texture, sample_type }
+        Self {
+            texture,
+            sample_type,
+        }
     }
 
     pub const fn point(texture: Arc<ImageView>) -> Self {
-        Self { texture, sample_type: SampleType::POINT }
+        Self {
+            texture,
+            sample_type: SampleType::POINT,
+        }
     }
 
     pub const fn linear(texture: Arc<ImageView>) -> Self {
-        Self { texture, sample_type: SampleType::LINEAR }
+        Self {
+            texture,
+            sample_type: SampleType::LINEAR,
+        }
     }
 
     pub fn width(&self) -> u32 {
@@ -51,12 +62,16 @@ impl Texture {
 
         let renderer = Application::get().renderer.as_ref().unwrap();
 
-        let dest_buffer: Subbuffer<[u8]> = Renderer::create_buffer(renderer.mem_alloc.clone(), (0..pixel_count).map(|_| 0u8), BufferUsage::TRANSFER_DST);
+        let dest_buffer: Subbuffer<[u8]> = Renderer::create_buffer(
+            renderer.mem_alloc.clone(),
+            (0..pixel_count).map(|_| 0u8),
+            BufferUsage::TRANSFER_DST,
+        );
 
         let mut builder = AutoCommandBufferBuilder::primary(
             renderer.command_alloc.clone(),
             renderer.queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit
+            CommandBufferUsage::OneTimeSubmit,
         )?;
 
         builder.copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(

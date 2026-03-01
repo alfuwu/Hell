@@ -1,5 +1,5 @@
 use crate::scene::behaviors::behavior::Behavior;
-use crate::scene::behaviors::physics_behavior::PhysicsData;
+use crate::scene::behaviors::behavior::PhysicsData;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 
@@ -10,11 +10,11 @@ impl MultiBehavior {
     pub fn new(behaviors: Vec<Box<dyn Behavior>>) -> Self {
         Self { behaviors }
     }
-    
+
     pub fn empty() -> Self {
         Self { behaviors: vec![] }
     }
-    
+
     pub fn with_behavior(mut self, behavior: Box<dyn Behavior>) -> Self {
         self.behaviors.push(behavior);
         self
@@ -31,7 +31,7 @@ impl Behavior for MultiBehavior {
         for behavior in &self.behaviors {
             let phys = behavior.as_physics();
             if phys.is_some() {
-                return phys
+                return phys;
             }
         }
         None
@@ -41,7 +41,7 @@ impl Behavior for MultiBehavior {
         for behavior in &mut self.behaviors {
             let phys = behavior.as_physics_mut();
             if phys.is_some() {
-                return phys
+                return phys;
             }
         }
         None

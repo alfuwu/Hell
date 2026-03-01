@@ -12,16 +12,18 @@ pub struct Vertex {
     pub normal: [f32; 3],
 
     #[format(R32G32_SFLOAT)]
-    pub uv: [f32; 2]
+    pub uv: [f32; 2],
 }
 impl Vertex {
-    pub const fn default() -> Self { Self::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0) }
-    
+    pub const fn default() -> Self {
+        Self::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    }
+
     pub const fn new(x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> Self {
         Self {
             position: [x, y, z],
             normal: [nx, ny, nz],
-            uv: [u, v]
+            uv: [u, v],
         }
     }
 
@@ -57,11 +59,15 @@ impl Vertex {
         let length = (nx * nx + ny * ny + nz * nz).sqrt();
         [nx / length, ny / length, nz / length]
     }
-    
+
     pub fn calculate_normals(vertices: &mut Vec<Vertex>, indices: &Vec<u32>) {
         // accumulate normals
         for tri in indices.chunks(3) {
-            let n = Vertex::triangle_normal(&vertices[tri[0] as usize], &vertices[tri[1] as usize], &vertices[tri[2] as usize]);
+            let n = Vertex::triangle_normal(
+                &vertices[tri[0] as usize],
+                &vertices[tri[1] as usize],
+                &vertices[tri[2] as usize],
+            );
             for &idx in tri {
                 vertices[idx as usize].normal[0] += n[0];
                 vertices[idx as usize].normal[1] += n[1];
@@ -71,7 +77,9 @@ impl Vertex {
 
         // normalize
         for v in vertices {
-            let len = (v.normal[0]*v.normal[0] + v.normal[1]*v.normal[1] + v.normal[2]*v.normal[2]).sqrt();
+            let len =
+                (v.normal[0] * v.normal[0] + v.normal[1] * v.normal[1] + v.normal[2] * v.normal[2])
+                    .sqrt();
             if len != 0.0 {
                 v.normal[0] /= len;
                 v.normal[1] /= len;
@@ -103,9 +111,13 @@ impl Vertex {
 
         // normalize
         for v in vertices.iter_mut() {
-            let key = [v.position[0].to_bits(), v.position[1].to_bits(), v.position[2].to_bits()];
+            let key = [
+                v.position[0].to_bits(),
+                v.position[1].to_bits(),
+                v.position[2].to_bits(),
+            ];
             if let Some(n) = normal_map.get(&key) {
-                let len = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
                 if len != 0.0 {
                     v.normal[0] = n[0] / len;
                     v.normal[1] = n[1] / len;
@@ -114,7 +126,7 @@ impl Vertex {
             }
         }
     }
-    
+
     pub fn flatten(vertices: &Vec<Vertex>, indices: &Vec<u32>) -> Vec<Vertex> {
         let mut flat_vertices: Vec<Vertex> = Vec::with_capacity(indices.len());
 

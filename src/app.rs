@@ -1,12 +1,6 @@
-use std::f32::consts::FRAC_PI_2;
-use std::fs::File;
-use std::path::Path;
 use std::ptr::null_mut;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::Arc;
 use std::time::Instant;
-use parry3d::glamx::EulerRot;
-use parry3d::math::{Rot3, Vec3};
-use parry3d::shape::SharedShape;
 use winit::{
     application::ApplicationHandler,
     event::{WindowEvent, ButtonSource, MouseButton, DeviceEvent, DeviceId},
@@ -31,7 +25,7 @@ use crate::rendering::texture::Texture;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
-use crate::scene::behaviors::physics_behavior::PhysicsBehavior;
+use crate::scene::object_collider::ObjectCollider;
 use crate::util::noise::perlin::gradient_noise_2d::octave_noise;
 use crate::util::vectors::Vector3f;
 
@@ -179,7 +173,7 @@ impl Application {
 
                 let h = octave_noise(l, t, 0, 4, 0.5, 2.0);
 
-                let normalized = ((h + 1.0) * 0.5).clamp(0.0, 1.0);
+                let normalized = 1.0 - ((h + 1.0) * 0.5).clamp(0.0, 1.0);
                 let clr = match normalized {
                     n if n > 0.8 => Color::rgb(255, 255, 255),
                     n if n > 0.55 => Color::lerp(&Color::rgb(128, 128, 128), &Color::rgb(255, 255, 255), f32::max((n - 0.7) * 10.0, 0.0)),
@@ -202,7 +196,7 @@ impl Application {
                 let t = j as f32;
                 let h = octave_noise(l * 0.5, t * 0.5, 0, 4, 0.5, 2.0) * 5.0;
                 let idx = i * (GRID_SIZE+1) + j;
-                vertices[idx] = Vertex::vertex(l, t, h).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32);
+                vertices[idx] = Vertex::vertex(l, h, t).uv(l / GRID_SIZE as f32, t / GRID_SIZE as f32);
             }
         }
 
@@ -223,24 +217,6 @@ impl Application {
         }
 
         Vertex::calculate_normals(&mut vertices, &indices);
-        let position = Vector3f::new(-50.0, 5.0, -50.0);
-        let scale = Vector3f::uniform(10.0);
-        let rot = Rot3::from_euler(EulerRot::XYZ, FRAC_PI_2, 0.0, 0.0);
-
-        let c_verts = vertices.iter().map(|v| {
-            let p = Vec3::new(
-                v.position[0] * scale.x,
-                v.position[1] * scale.y,
-                v.position[2] * scale.z,
-            );
-            let p = rot * p;
-            Vec3::new(
-                p.x + position.x,
-                p.y + position.y,
-                p.z + position.z,
-            )
-        }).collect::<Vec<_>>();
-        let c_indices = indices.chunks(3).map(|c| { [c[0], c[1], c[2]] }).collect::<Vec<_>>();
 
         let mesh = Arc::new(Mesh::new(
             vertices,
@@ -251,46 +227,15 @@ impl Application {
             mesh.clone(),
             Vector3f::ZERO,
             Vector3f::ZERO,
-            scale
-        ).with_collider(SharedShape::trimesh(c_verts.clone(), c_indices.clone()).unwrap()));
-
-        let col_mesh = Arc::new(Mesh::new(
-            c_verts.iter().map(|v| { Vertex::vertex(v.x, v.y, v.z) }).collect(),
-            Some(indices),
-            None
-        ));
-        let mut obj = Object::new(
-            col_mesh,
-            Vector3f::ZERO,
-            Vector3f::ZERO,
-            Vector3f::ONE
-        );
-        obj.debug = true;
-        //self.scene.add_object(obj);
+            Vector3f::uniform(10.0)
+        ).with_collider(ObjectCollider::new_mesh(true)));
 
         self.scene.add_object(Object::new(
-            Arc::new(Mesh::cube(None)),
+            Arc::new(Mesh::uv_sphere(16, 16, None)),
             Vector3f::new(-2.0, 100.0, -2.0),
             Vector3f::new(0.0, 0.0, 0.0),
             Vector3f::uniform(10.0)
-        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
-            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
-
-        self.scene.add_object(Object::new(
-            Arc::new(Mesh::cube(None)),
-            Vector3f::new(-10.0, 100.0, 0.0),
-            Vector3f::new(0.0, 0.0, 0.0),
-            Vector3f::uniform(10.0)
-        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
-            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
-
-        self.scene.add_object(Object::new(
-            Arc::new(Mesh::cube(None)),
-            Vector3f::new(15.0, 100.0, -2.0),
-            Vector3f::new(0.0, 0.0, 0.0),
-            Vector3f::uniform(10.0)
-        ).with_collider(SharedShape::cuboid(5.0, 5.0, 5.0))
-            .with_behavior(Box::new(PhysicsBehavior::new(1.0))));
+        ).with_collider(ObjectCollider::new_sphere(None, false)));
     }
 
     unsafe fn draw(&mut self) {

@@ -1,11 +1,9 @@
-use std::sync::Arc;
-use parry3d::glamx::EulerRot;
-use parry3d::math::{Pose, Rot3, Vec3};
-use parry3d::shape::SharedShape;
 use crate::rendering::mesh::Mesh;
 use crate::scene::behaviors::behavior::Behavior;
+use crate::scene::object_collider::ObjectCollider;
 use crate::scene::scene::Scene;
 use crate::util::vectors::Vector3f;
+use std::sync::Arc;
 
 pub struct Object {
     pub mesh: Arc<Mesh>,
@@ -15,9 +13,7 @@ pub struct Object {
     pub pivot: Vector3f,
 
     pub behavior: Option<Box<dyn Behavior>>,
-    pub collider: Option<SharedShape>,
-
-    pub debug: bool
+    pub collider: Option<ObjectCollider>
 }
 impl Object {
     pub fn new(mesh: Arc<Mesh>, position: Vector3f, rotation: Vector3f, scale: Vector3f) -> Self {
@@ -30,8 +26,7 @@ impl Object {
             scale,
             pivot,
             behavior: None,
-            collider: None,
-            debug: false
+            collider: None
         }
     }
 
@@ -40,24 +35,9 @@ impl Object {
         self
     }
 
-    pub fn with_collider(mut self, shape: SharedShape) -> Self {
-        self.collider = Some(shape);
+    pub fn with_collider(mut self, collider: ObjectCollider) -> Self {
+        self.collider = Some(collider);
         self
-    }
-
-    pub fn pose(&self) -> Pose {
-        let translation = Vec3::new(
-            self.position.x,
-            self.position.y,
-            self.position.z,
-        );
-        let rotation = Rot3::from_euler(
-            EulerRot::XYZ,
-            self.rotation.x,
-            self.rotation.y,
-            self.rotation.z,
-        );
-        Pose::from_parts(translation, rotation)
     }
 
     pub fn update(&mut self, scene: &mut Scene, delta_time: f32) {
@@ -77,9 +57,9 @@ impl PartialEq for Object {
             (None, None) => true,
             (Some(a), Some(b)) => a.equals(b.as_ref()),
             _ => false,
-        }) && self.mesh == other.mesh &&
-            self.position == other.position &&
-            self.rotation == other.rotation &&
-            self.scale == other.scale
+        }) && self.mesh == other.mesh
+            && self.position == other.position
+            && self.rotation == other.rotation
+            && self.scale == other.scale
     }
 }
