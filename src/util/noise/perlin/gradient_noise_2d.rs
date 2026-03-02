@@ -82,7 +82,7 @@ pub const fn octave_noise(
     seed: i32,
     octaves: u32,
     persistence: f32,
-    lacunarity: f32,
+    lacunarity: f32
 ) -> f32 {
     let mut total = 0.0;
 
@@ -197,7 +197,7 @@ pub const fn gradient_noise_periodic_vec2(
     x: f32,
     y: f32,
     period: &NoisePeriod,
-    seed: i32,
+    seed: i32
 ) -> (f32, f32) {
     // see comments in gradient_noise_periodic() and gradient_noise()
     let mut ix = if x > 0.0 { x as i32 } else { x as i32 - 1 };
@@ -258,7 +258,7 @@ const fn interpolate_gradients(
     ul_hash: i32,
     ur_hash: i32,
     fx: f32,
-    fy: f32,
+    fy: f32
 ) -> f32 {
     // here we calculate a gradient at each corner, where the value is the dot-product
     // of a vector derived from the hash and the vector from the coner to the

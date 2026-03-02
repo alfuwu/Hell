@@ -6,7 +6,7 @@ use crate::util::vectors::Vector3f;
 use std::mem::take;
 use rapier3d::dynamics::RigidBodyBuilder;
 use rapier3d::glamx::{EulerRot, Vec3};
-use rapier3d::prelude::{CollisionEvent, Pose, Rot3, Vector};
+use rapier3d::prelude::{CollisionEvent, Pose, RigidBody, Rot3, Vector};
 
 pub struct Scene {
     pub objects: Vec<Object>,
@@ -32,7 +32,7 @@ impl Scene {
                 rot,
             );
 
-            let collider_builder = col.build_rapier_collider(&object.mesh, object.scale);
+            let collider_builder = col.build_rapier_collider(&object.mesh, object.scale, object.pivot);
 
             if col.is_static {
                 let rb = RigidBodyBuilder::fixed().pose(iso).build();
@@ -41,7 +41,7 @@ impl Scene {
                 let col_handle = self.physics.collider_set.insert_with_parent(
                     col_built,
                     rb_handle,
-                    &mut self.physics.rigid_body_set,
+                    &mut self.physics.rigid_body_set
                 );
                 col.body_handle = Some(rb_handle);
                 col.collider_handle = Some(col_handle);
@@ -58,13 +58,15 @@ impl Scene {
                 let rb = RigidBodyBuilder::dynamic()
                     .pose(iso)
                     .additional_mass(mass)
+                    .gravity_scale(col.gravity_scale)
+                    .enabled_rotations(col.allow_rot_x, col.allow_rot_y, col.allow_rot_z)
                     .build();
                 let rb_handle = self.physics.rigid_body_set.insert(rb);
                 let col_built = collider_builder.build();
                 let col_handle = self.physics.collider_set.insert_with_parent(
                     col_built,
                     rb_handle,
-                    &mut self.physics.rigid_body_set,
+                    &mut self.physics.rigid_body_set
                 );
                 col.body_handle = Some(rb_handle);
                 col.collider_handle = Some(col_handle);
@@ -84,19 +86,19 @@ impl Scene {
 
     pub fn destroy_object(&mut self, object: &Object) {
         if let Some(idx) = self.objects.iter().position(|item| item == object) {
-            self.remove_physics_for_index(idx);
+            self.remove_rb(idx);
             self.objects.remove(idx);
         }
     }
 
-    pub fn rm_object(&mut self, idx: usize) -> Object {
-        self.remove_physics_for_index(idx);
+    pub fn remove_object(&mut self, idx: usize) -> Object {
+        self.remove_rb(idx);
         self.objects.remove(idx)
     }
 
     pub fn destroy_all_objects(&mut self) {
         for i in 0..self.objects.len() {
-            self.remove_physics_for_index(i);
+            self.remove_rb(i);
         }
         self.objects.clear()
     }
@@ -195,19 +197,30 @@ impl Scene {
         }
     }
 
-    fn remove_physics_for_index(&mut self, idx: usize) {
+    fn remove_rb(&mut self, idx: usize) {
         let obj = &self.objects[idx];
         if let Some(col) = &obj.collider {
             if let Some(rb_handle) = col.body_handle {
-                self.physics.rigid_body_set.remove(
-                    rb_handle,
-                    &mut self.physics.island_manager,
-                    &mut self.physics.collider_set,
-                    &mut self.physics.impulse_joint_set,
-                    &mut self.physics.multibody_joint_set,
-                    true,
-                );
+                self.physics.remove(rb_handle);
             }
         }
+    }
+    
+    fn get_rb_idx(&mut self, idx: usize) -> Option<&mut RigidBody> {
+        let obj = &self.objects[idx];
+        if let Some(col) = &obj.collider {
+            if let Some(rb_handle) = col.body_handle {
+                return self.physics.rigid_body_set.get_mut(rb_handle);
+            }
+        }
+        None
+    }
+    fn get_rb(&mut self, obj: &Object) -> Option<&mut RigidBody> {
+        if let Some(col) = &obj.collider {
+            if let Some(rb_handle) = col.body_handle {
+                return self.physics.rigid_body_set.get_mut(rb_handle);
+            }
+        }
+        None
     }
 }

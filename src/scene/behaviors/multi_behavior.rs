@@ -4,7 +4,7 @@ use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 
 pub struct MultiBehavior {
-    pub behaviors: Vec<Box<dyn Behavior>>,
+    pub behaviors: Vec<Box<dyn Behavior>>
 }
 impl MultiBehavior {
     pub fn new(behaviors: Vec<Box<dyn Behavior>>) -> Self {

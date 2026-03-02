@@ -4,16 +4,23 @@ use crate::scene::object_collider::ObjectCollider;
 use crate::scene::scene::Scene;
 use crate::util::vectors::Vector3f;
 use std::sync::Arc;
+use vulkano::descriptor_set::DescriptorSet;
+use vulkano::pipeline::GraphicsPipeline;
 
 pub struct Object {
-    pub mesh: Arc<Mesh>,
+    pub mesh: Arc<Mesh>, // any changes to mesh need to set recreate_descriptor_set to true
     pub position: Vector3f,
     pub rotation: Vector3f,
-    pub scale: Vector3f,
-    pub pivot: Vector3f,
+    pub scale: Vector3f, // any changes to scale need to recreate collider
+    pub pivot: Vector3f, // any changes to pivot need to recreate collider
 
     pub behavior: Option<Box<dyn Behavior>>,
-    pub collider: Option<ObjectCollider>
+    pub collider: Option<ObjectCollider>, // any changes to collider need to recreate collider
+
+    pub pipeline: Option<Arc<GraphicsPipeline>>,
+
+    pub descriptor_set: Vec<Option<Arc<DescriptorSet>>>,
+    pub recreate_descriptor_set: bool
 }
 impl Object {
     pub fn new(mesh: Arc<Mesh>, position: Vector3f, rotation: Vector3f, scale: Vector3f) -> Self {
@@ -26,7 +33,10 @@ impl Object {
             scale,
             pivot,
             behavior: None,
-            collider: None
+            collider: None,
+            pipeline: None,
+            descriptor_set: vec![],
+            recreate_descriptor_set: true
         }
     }
 
@@ -34,9 +44,12 @@ impl Object {
         self.behavior = Some(behavior);
         self
     }
-
     pub fn with_collider(mut self, collider: ObjectCollider) -> Self {
         self.collider = Some(collider);
+        self
+    }
+    pub fn with_pipeline(mut self, pipeline: Arc<GraphicsPipeline>) -> Self {
+        self.pipeline = Some(pipeline);
         self
     }
 

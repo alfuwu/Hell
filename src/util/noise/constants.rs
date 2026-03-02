@@ -33,8 +33,7 @@ pub(crate) const Z_PRIME1: i32 = 1774326877;
 pub(crate) const X_PLUS_Y_PRIME1: i32 = X_PRIME1.wrapping_add(Y_PRIME1);
 pub(crate) const X_PLUS_Z_PRIME1: i32 = X_PRIME1.wrapping_add(Z_PRIME1);
 pub(crate) const Y_PLUS_Z_PRIME1: i32 = Y_PRIME1.wrapping_add(Z_PRIME1);
-pub(crate) const X_PLUS_Y_PLUS_Z_PRIME1: i32 =
-    X_PRIME1.wrapping_add(Y_PRIME1).wrapping_add(Z_PRIME1);
+pub(crate) const X_PLUS_Y_PLUS_Z_PRIME1: i32 = X_PRIME1.wrapping_add(Y_PRIME1).wrapping_add(Z_PRIME1);
 
 pub(crate) const X_MINUS_Y_PRIME1: i32 = X_PRIME1.wrapping_sub(Y_PRIME1);
 pub(crate) const Y_MINUS_X_PRIME1: i32 = X_PRIME1.wrapping_sub(Y_PRIME1);
@@ -46,8 +45,7 @@ pub(crate) const Z_PRIME2: i32 = 0869819479;
 pub(crate) const X_PLUS_Y_PRIME2: i32 = X_PRIME2.wrapping_add(Y_PRIME2);
 pub(crate) const X_PLUS_Z_PRIME2: i32 = X_PRIME2.wrapping_add(Z_PRIME2);
 pub(crate) const Y_PLUS_Z_PRIME2: i32 = Y_PRIME2.wrapping_add(Z_PRIME2);
-pub(crate) const X_PLUS_Y_PLUS_Z_PRIME2: i32 =
-    X_PRIME2.wrapping_add(Y_PRIME2).wrapping_add(Z_PRIME2);
+pub(crate) const X_PLUS_Y_PLUS_Z_PRIME2: i32 = X_PRIME2.wrapping_add(Y_PRIME2).wrapping_add(Z_PRIME2);
 
 pub(crate) const X_MINUS_Y_PRIME2: i32 = X_PRIME2.wrapping_sub(Y_PRIME2);
 pub(crate) const Y_MINUS_X_PRIME2: i32 = X_PRIME2.wrapping_sub(Y_PRIME2);

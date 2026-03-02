@@ -3,7 +3,7 @@ use std::ops::Mul;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Matrix4f {
-    pub m: [[f32; 4]; 4],
+    pub m: [[f32; 4]; 4]
 }
 impl Matrix4f {
     pub const fn new(m: [[f32; 4]; 4]) -> Self {
@@ -16,8 +16,8 @@ impl Matrix4f {
                 [1.0, 0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0, 0.0],
                 [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -39,7 +39,7 @@ impl Matrix4f {
                 [v.x, 0.0, 0.0, 0.0],
                 [0.0, v.y, 0.0, 0.0],
                 [0.0, 0.0, v.z, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.0, 1.0]
             ],
         }
     }
@@ -49,10 +49,10 @@ impl Matrix4f {
         Self {
             m: [
                 [1.0, 0.0, 0.0, 0.0],
-                [0.0, c, -s, 0.0],
-                [0.0, s, c, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+                [0.0,   c,  -s, 0.0],
+                [0.0,   s,   c, 0.0],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -60,11 +60,11 @@ impl Matrix4f {
         let (s, c) = angle.sin_cos();
         Self {
             m: [
-                [c, 0.0, s, 0.0],
+                [c,   0.0,   s, 0.0],
                 [0.0, 1.0, 0.0, 0.0],
-                [-s, 0.0, c, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+                [-s,  0.0,   c, 0.0],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -72,11 +72,11 @@ impl Matrix4f {
         let (s, c) = angle.sin_cos();
         Self {
             m: [
-                [c, -s, 0.0, 0.0],
-                [s, c, 0.0, 0.0],
+                [c,    -s, 0.0, 0.0],
+                [s,     c, 0.0, 0.0],
                 [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+                [0.0, 0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -97,8 +97,8 @@ impl Matrix4f {
                 [oc * x * x + c, oc * x * y - z * s, oc * x * z + y * s, 0.0],
                 [oc * y * x + z * s, oc * y * y + c, oc * y * z - x * s, 0.0],
                 [oc * z * x - y * s, oc * z * y + x * s, oc * z * z + c, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+                [0.0,                0.0,                0.0,            1.0]
+            ]
         }
     }
 
@@ -108,31 +108,21 @@ impl Matrix4f {
 
         Self {
             m: [
-                [f / aspect, 0.0, 0.0, 0.0],
-                [0.0, f, 0.0, 0.0],
-                [0.0, 0.0, (far + near) * nf, (2.0 * far * near) * nf],
-                [0.0, 0.0, -1.0, 0.0],
+                [f / aspect, 0.0, 0.0,               0.0                    ],
+                [0.0,        f,   0.0,               0.0                    ],
+                [0.0,        0.0, (far + near) * nf, (2.0 * far * near) * nf],
+                [0.0,        0.0, -1.0,              0.0                    ]
             ],
         }
     }
 
-    pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
+    pub const fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Self {
         Self {
             m: [
-                [
-                    2.0 / (right - left),
-                    0.0,
-                    0.0,
-                    -(right + left) / (right - left),
-                ],
-                [
-                    0.0,
-                    2.0 / (top - bottom),
-                    0.0,
-                    -(top + bottom) / (top - bottom),
-                ],
-                [0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near)],
-                [0.0, 0.0, 0.0, 1.0],
+                [2.0 / (right - left), 0.0,                  0.0,                 -(right + left) / (right - left)],
+                [0.0,                  2.0 / (top - bottom), 0.0,                 -(top + bottom) / (top - bottom)],
+                [0.0,                  0.0,                  -2.0 / (far - near), -(far + near) / (far - near)    ],
+                [0.0,                  0.0,                  0.0,                 1.0                             ]
             ],
         }
     }
@@ -176,11 +166,9 @@ impl Matrix4f {
         result
     }
 
-    pub fn transform_point(&self, v: Vector3f) -> Vector3f {
+    pub const fn transform_point(&self, v: Vector3f) -> Vector3f {
         let x = self.m[0][0] * v.x + self.m[0][1] * v.y + self.m[0][2] * v.z + self.m[0][3];
-
         let y = self.m[1][0] * v.x + self.m[1][1] * v.y + self.m[1][2] * v.z + self.m[1][3];
-
         let z = self.m[2][0] * v.x + self.m[2][1] * v.y + self.m[2][2] * v.z + self.m[2][3];
 
         Vector3f { x, y, z }
@@ -198,7 +186,7 @@ impl Matrix4f {
         result
     }
 
-    pub fn determinant(&self) -> f32 {
+    pub const fn determinant(&self) -> f32 {
         let m = &self.m;
 
         let subfactor00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
@@ -214,12 +202,12 @@ impl Matrix4f {
             - m[0][3] * (m[1][0] * subfactor02 - m[1][1] * subfactor04 + m[1][2] * subfactor05)
     }
 
-    pub fn to_cols_array_2d(&self) -> [[f32; 4]; 4] {
+    pub const fn to_cols_array_2d(&self) -> [[f32; 4]; 4] {
         [
             [self.m[0][0], self.m[1][0], self.m[2][0], self.m[3][0]],
             [self.m[0][1], self.m[1][1], self.m[2][1], self.m[3][1]],
             [self.m[0][2], self.m[1][2], self.m[2][2], self.m[3][2]],
-            [self.m[0][3], self.m[1][3], self.m[2][3], self.m[3][3]],
+            [self.m[0][3], self.m[1][3], self.m[2][3], self.m[3][3]]
         ]
     }
 
@@ -350,20 +338,16 @@ impl Matrix4f {
     }
 
     pub fn inverse_affine(&self) -> Option<Self> {
-        // Verify affine form
-        if self.m[3][0] != 0.0 || self.m[3][1] != 0.0 || self.m[3][2] != 0.0 || self.m[3][3] != 1.0
-        {
+        if self.m[3][0] != 0.0 || self.m[3][1] != 0.0 || self.m[3][2] != 0.0 || self.m[3][3] != 1.0 {
             return None;
         }
 
-        // Extract upper-left 3x3
         let r = [
             [self.m[0][0], self.m[0][1], self.m[0][2]],
             [self.m[1][0], self.m[1][1], self.m[1][2]],
             [self.m[2][0], self.m[2][1], self.m[2][2]],
         ];
 
-        // Compute determinant of 3x3
         let det = r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1])
             - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0])
             + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0]);
@@ -374,7 +358,6 @@ impl Matrix4f {
 
         let inv_det = 1.0 / det;
 
-        // Inverse of 3x3 (adjugate / determinant)
         let mut inv_r = [[0.0f32; 3]; 3];
 
         inv_r[0][0] = (r[1][1] * r[2][2] - r[1][2] * r[2][1]) * inv_det;
@@ -389,7 +372,6 @@ impl Matrix4f {
         inv_r[2][1] = -(r[0][0] * r[2][1] - r[0][1] * r[2][0]) * inv_det;
         inv_r[2][2] = (r[0][0] * r[1][1] - r[0][1] * r[1][0]) * inv_det;
 
-        // Inverse translation = -R_inv * T
         let t = Vector3f {
             x: self.m[0][3],
             y: self.m[1][3],
@@ -426,33 +408,21 @@ impl From<[f32; 16]> for Matrix4f {
     fn from(arr: [f32; 16]) -> Self {
         Self {
             m: [
-                [arr[0], arr[1], arr[2], arr[3]],
-                [arr[4], arr[5], arr[6], arr[7]],
-                [arr[8], arr[9], arr[10], arr[11]],
-                [arr[12], arr[13], arr[14], arr[15]],
-            ],
+                [arr[0],  arr[1], arr[2],   arr[3]],
+                [arr[4],  arr[5], arr[6],   arr[7]],
+                [arr[8],  arr[9], arr[10],  arr[11]],
+                [arr[12], arr[13], arr[14], arr[15]]
+            ]
         }
     }
 }
 impl From<Matrix4f> for [f32; 16] {
     fn from(mat: Matrix4f) -> Self {
         [
-            mat.m[0][0],
-            mat.m[0][1],
-            mat.m[0][2],
-            mat.m[0][3],
-            mat.m[1][0],
-            mat.m[1][1],
-            mat.m[1][2],
-            mat.m[1][3],
-            mat.m[2][0],
-            mat.m[2][1],
-            mat.m[2][2],
-            mat.m[2][3],
-            mat.m[3][0],
-            mat.m[3][1],
-            mat.m[3][2],
-            mat.m[3][3],
+            mat.m[0][0], mat.m[0][1], mat.m[0][2], mat.m[0][3],
+            mat.m[1][0], mat.m[1][1], mat.m[1][2], mat.m[1][3],
+            mat.m[2][0], mat.m[2][1], mat.m[2][2], mat.m[2][3],
+            mat.m[3][0], mat.m[3][1], mat.m[3][2], mat.m[3][3]
         ]
     }
 }
@@ -482,7 +452,11 @@ impl Matrix3f {
 
     pub const fn identity() -> Self {
         Self {
-            m: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            m: [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -492,28 +466,44 @@ impl Matrix3f {
 
     pub const fn scale(v: Vector3f) -> Self {
         Self {
-            m: [[v.x, 0.0, 0.0], [0.0, v.y, 0.0], [0.0, 0.0, v.z]],
+            m: [
+                [v.x, 0.0, 0.0],
+                [0.0, v.y, 0.0],
+                [0.0, 0.0, v.z]
+            ]
         }
     }
 
     pub fn rotation_x(angle: f32) -> Self {
         let (s, c) = angle.sin_cos();
         Self {
-            m: [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]],
+            m: [
+                [1.0, 0.0, 0.0],
+                [0.0,   c,  -s],
+                [0.0,   s,   c]
+            ]
         }
     }
 
     pub fn rotation_y(angle: f32) -> Self {
         let (s, c) = angle.sin_cos();
         Self {
-            m: [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]],
+            m: [
+                [c,   0.0,   s],
+                [0.0, 1.0, 0.0],
+                [-s,  0.0,   c]
+            ]
         }
     }
 
     pub fn rotation_z(angle: f32) -> Self {
         let (s, c) = angle.sin_cos();
         Self {
-            m: [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]],
+            m: [
+                [c,    -s, 0.0],
+                [s,     c, 0.0],
+                [0.0, 0.0, 1.0]
+            ]
         }
     }
 
@@ -533,8 +523,8 @@ impl Matrix3f {
             m: [
                 [oc * x * x + c, oc * x * y - z * s, oc * x * z + y * s],
                 [oc * y * x + z * s, oc * y * y + c, oc * y * z - x * s],
-                [oc * z * x - y * s, oc * z * y + x * s, oc * z * z + c],
-            ],
+                [oc * z * x - y * s, oc * z * y + x * s, oc * z * z + c]
+            ]
         }
     }
 
@@ -554,9 +544,7 @@ impl Matrix3f {
 
     pub fn transform_point(&self, v: Vector3f) -> Vector3f {
         let x = self.m[0][0] * v.x + self.m[0][1] * v.y + self.m[0][2] * v.z;
-
         let y = self.m[1][0] * v.x + self.m[1][1] * v.y + self.m[1][2] * v.z;
-
         let z = self.m[2][0] * v.x + self.m[2][1] * v.y + self.m[2][2] * v.z;
 
         Vector3f { x, y, z }
@@ -585,7 +573,7 @@ impl Matrix3f {
         [
             [self.m[0][0], self.m[1][0], self.m[2][0]],
             [self.m[0][1], self.m[1][1], self.m[2][1]],
-            [self.m[0][2], self.m[1][2], self.m[2][2]],
+            [self.m[0][2], self.m[1][2], self.m[2][2]]
         ]
     }
 
@@ -616,22 +604,16 @@ impl Matrix3f {
                     (m[1][0] * m[2][1] - m[1][1] * m[2][0]) * inv_det,
                     -(m[0][0] * m[2][1] - m[0][1] * m[2][0]) * inv_det,
                     (m[0][0] * m[1][1] - m[0][1] * m[1][0]) * inv_det,
-                ],
-            ],
+                ]
+            ]
         })
     }
 
     pub fn to_flat_array(&self) -> [f32; 9] {
         [
-            self.m[0][0],
-            self.m[0][1],
-            self.m[0][2],
-            self.m[1][0],
-            self.m[1][1],
-            self.m[1][2],
-            self.m[2][0],
-            self.m[2][1],
-            self.m[2][2],
+            self.m[0][0], self.m[0][1], self.m[0][2],
+            self.m[1][0], self.m[1][1], self.m[1][2],
+            self.m[2][0], self.m[2][1], self.m[2][2]
         ]
     }
 }
@@ -646,23 +628,17 @@ impl From<[f32; 9]> for Matrix3f {
             m: [
                 [arr[0], arr[1], arr[2]],
                 [arr[3], arr[4], arr[5]],
-                [arr[6], arr[7], arr[8]],
-            ],
+                [arr[6], arr[7], arr[8]]
+            ]
         }
     }
 }
 impl From<Matrix3f> for [f32; 9] {
     fn from(mat: Matrix3f) -> Self {
         [
-            mat.m[0][0],
-            mat.m[0][1],
-            mat.m[0][2],
-            mat.m[1][0],
-            mat.m[1][1],
-            mat.m[1][2],
-            mat.m[2][0],
-            mat.m[2][1],
-            mat.m[2][2],
+            mat.m[0][0], mat.m[0][1], mat.m[0][2],
+            mat.m[1][0], mat.m[1][1], mat.m[1][2],
+            mat.m[2][0], mat.m[2][1], mat.m[2][2]
         ]
     }
 }

@@ -5,7 +5,7 @@ use vulkano::buffer::BufferContents;
 #[repr(C)]
 #[derive(BufferContents, Clone, Copy)]
 pub struct CameraUBO {
-    pub view_proj: [[f32; 4]; 4],
+    pub view_proj: [[f32; 4]; 4]
 }
 
 pub trait Camera: Send + Sync {
@@ -27,7 +27,7 @@ pub struct Camera2D {
     pub position: Vector3f,
     pub zoom: f32,
     pub viewport_width: f32,
-    pub viewport_height: f32,
+    pub viewport_height: f32
 }
 impl Camera2D {
     pub fn new(width: f32, height: f32) -> Self {
@@ -35,7 +35,7 @@ impl Camera2D {
             position: Vector3f::ZERO.clone(),
             zoom: 1.0,
             viewport_width: width,
-            viewport_height: height,
+            viewport_height: height
         }
     }
 }
@@ -74,7 +74,7 @@ pub struct Camera3D {
     pub fov: f32,
     pub aspect: f32,
     pub near: f32,
-    pub far: f32,
+    pub far: f32
 }
 impl Camera3D {
     pub fn new(aspect: f32) -> Self {
@@ -89,7 +89,7 @@ impl Camera3D {
             fov: f32::to_radians(45.0),
             aspect,
             near: 0.1,
-            far: 100000.0,
+            far: 100000.0
         };
 
         cam.update_vectors();
@@ -103,7 +103,7 @@ impl Camera3D {
         let front = Vector3f::new(
             yaw_rad.cos() * pitch_rad.cos(),
             pitch_rad.sin(),
-            yaw_rad.sin() * pitch_rad.cos(),
+            yaw_rad.sin() * pitch_rad.cos()
         );
 
         self.front = front.normalized();
@@ -150,7 +150,7 @@ pub struct OrbitalCamera3D {
     pub fov: f32,
     pub aspect: f32,
     pub near: f32,
-    pub far: f32,
+    pub far: f32
 }
 impl OrbitalCamera3D {
     pub fn new(aspect: f32) -> Self {
@@ -161,7 +161,7 @@ impl OrbitalCamera3D {
             fov: f32::to_radians(45.0),
             aspect,
             near: 0.1,
-            far: 100000.0,
+            far: 100000.0
         }
     }
 }

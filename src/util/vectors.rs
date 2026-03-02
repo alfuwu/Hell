@@ -2,11 +2,19 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
+    W
+}
+
 #[derive(Clone, Default, Copy, PartialEq)]
 pub struct Vector3f {
     pub x: f32,
     pub y: f32,
-    pub z: f32,
+    pub z: f32
 }
 impl Vector3f {
     pub const ZERO: Vector3f = Vector3f::zero();
@@ -22,35 +30,35 @@ impl Vector3f {
         Self {
             x: array[0],
             y: array[1],
-            z: array[2],
+            z: array[2]
         }
     }
     pub const fn uniform(xyz: f32) -> Self {
         Self {
             x: xyz,
             y: xyz,
-            z: xyz,
+            z: xyz
         }
     }
     pub const fn zero() -> Self {
         Self {
             x: 0.0,
             y: 0.0,
-            z: 0.0,
+            z: 0.0
         }
     }
     pub const fn one() -> Self {
         Self {
             x: 1.0,
             y: 1.0,
-            z: 1.0,
+            z: 1.0
         }
     }
 
     pub fn length(&self) -> f32 {
         self.length_squared().sqrt()
     }
-    pub fn length_squared(&self) -> f32 {
+    pub const fn length_squared(&self) -> f32 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
     pub fn normalize(&self) -> Self {
@@ -66,12 +74,12 @@ impl Vector3f {
     pub fn distance(&self, other: &Self) -> f32 {
         f32::sqrt(self.distance_squared(other))
     }
-    pub fn distance_squared(&self, other: &Self) -> f32 {
+    pub const fn distance_squared(&self, other: &Self) -> f32 {
         (self.x - other.x) * (self.x - other.x)
             + (self.y - other.y) * (self.y - other.y)
             + (self.z - other.z) * (self.z - other.z)
     }
-    pub fn dot(&self, other: &Self) -> f32 {
+    pub const fn dot(&self, other: &Self) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
     pub fn angle(&self, second: &Self) -> f32 {
@@ -81,7 +89,7 @@ impl Vector3f {
         }
         f32::acos((self.dot(second) / prod).clamp(-1.0, 1.0))
     } // in rads
-    pub fn cross(&self, other: &Self) -> Self {
+    pub const fn cross(&self, other: &Self) -> Self {
         Self {
             x: self.y * other.z - other.y * self.z,
             y: self.z * other.x - other.z * self.x,
@@ -132,14 +140,14 @@ impl Vector3f {
         Self {
             x: self.x.floor(),
             y: self.y.floor(),
-            z: self.z.floor(),
+            z: self.z.floor()
         }
     }
     pub fn ceil(&self) -> Self {
         Self {
             x: self.x.ceil(),
             y: self.y.ceil(),
-            z: self.z.ceil(),
+            z: self.z.ceil()
         }
     }
     pub fn hadamard(&self, other: &Self) -> Self {
@@ -166,7 +174,7 @@ impl Vector3f {
         Self {
             x: self.x.signum(),
             y: self.y.signum(),
-            z: self.z.signum(),
+            z: self.z.signum()
         }
     }
     pub fn move_towards(&self, target: Self, max_delta: f32) -> Self {
@@ -183,14 +191,14 @@ impl Vector3f {
         Self {
             x: f32::max(self.x, second.x),
             y: f32::max(self.y, second.y),
-            z: f32::max(self.z, second.z),
+            z: f32::max(self.z, second.z)
         }
     }
     pub fn min(&self, second: &Self) -> Self {
         Self {
             x: f32::min(self.x, second.x),
             y: f32::min(self.y, second.y),
-            z: f32::min(self.z, second.z),
+            z: f32::min(self.z, second.z)
         }
     }
     pub fn max_by_len(self, second: Self) -> Self {
@@ -217,7 +225,7 @@ impl Add<Vector3f> for Vector3f {
         Self {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + rhs.z,
+            z: self.z + rhs.z
         }
     }
 }
@@ -227,7 +235,7 @@ impl Sub<Vector3f> for Vector3f {
         Self {
             x: self.x - rhs.x,
             y: self.y - rhs.y,
-            z: self.z - rhs.z,
+            z: self.z - rhs.z
         }
     }
 }
@@ -237,7 +245,7 @@ impl Mul<Vector3f> for Vector3f {
         Self {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
-            z: self.z * rhs.z,
+            z: self.z * rhs.z
         }
     }
 }
@@ -247,7 +255,7 @@ impl Div<Vector3f> for Vector3f {
         Self {
             x: self.x / rhs.x,
             y: self.y / rhs.y,
-            z: self.z / rhs.z,
+            z: self.z / rhs.z
         }
     }
 }
@@ -257,7 +265,7 @@ impl Neg for Vector3f {
         Self {
             x: -self.x,
             y: -self.y,
-            z: -self.z,
+            z: -self.z
         }
     }
 }
@@ -299,7 +307,7 @@ where
         Self {
             x: self.x + rhs,
             y: self.y + rhs,
-            z: self.z + rhs,
+            z: self.z + rhs
         }
     }
 }
@@ -313,7 +321,7 @@ where
         Self {
             x: self.x - rhs,
             y: self.y - rhs,
-            z: self.z - rhs,
+            z: self.z - rhs
         }
     }
 }
@@ -327,7 +335,7 @@ where
         Self {
             x: self.x * rhs,
             y: self.y * rhs,
-            z: self.z * rhs,
+            z: self.z * rhs
         }
     }
 }
@@ -347,7 +355,7 @@ where
         Self {
             x: self.x / rhs,
             y: self.y / rhs,
-            z: self.z / rhs,
+            z: self.z / rhs
         }
     }
 }
@@ -357,7 +365,7 @@ impl Add<Vector3f> for &Vector3f {
         Self::Output {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + rhs.z,
+            z: self.z + rhs.z
         }
     }
 }
@@ -367,7 +375,7 @@ impl Sub<Vector3f> for &Vector3f {
         Self::Output {
             x: self.x - rhs.x,
             y: self.y - rhs.y,
-            z: self.z - rhs.z,
+            z: self.z - rhs.z
         }
     }
 }
@@ -377,7 +385,7 @@ impl Mul<Vector3f> for &Vector3f {
         Self::Output {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
-            z: self.z * rhs.z,
+            z: self.z * rhs.z
         }
     }
 }
@@ -387,7 +395,7 @@ impl Div<Vector3f> for &Vector3f {
         Self::Output {
             x: self.x / rhs.x,
             y: self.y / rhs.y,
-            z: self.z / rhs.z,
+            z: self.z / rhs.z
         }
     }
 }
@@ -397,7 +405,7 @@ impl Add<&Vector3f> for &Vector3f {
         Self::Output {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + rhs.z,
+            z: self.z + rhs.z
         }
     }
 }
@@ -407,7 +415,7 @@ impl Sub<&Vector3f> for &Vector3f {
         Self::Output {
             x: self.x - rhs.x,
             y: self.y - rhs.y,
-            z: self.z - rhs.z,
+            z: self.z - rhs.z
         }
     }
 }
@@ -417,7 +425,7 @@ impl Mul<&Vector3f> for &Vector3f {
         Self::Output {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
-            z: self.z * rhs.z,
+            z: self.z * rhs.z
         }
     }
 }
@@ -427,7 +435,7 @@ impl Div<&Vector3f> for &Vector3f {
         Self::Output {
             x: self.x / rhs.x,
             y: self.y / rhs.y,
-            z: self.z / rhs.z,
+            z: self.z / rhs.z
         }
     }
 }
@@ -437,7 +445,7 @@ impl Add<&Vector3f> for Vector3f {
         Self::Output {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
-            z: self.z + rhs.z,
+            z: self.z + rhs.z
         }
     }
 }
@@ -447,7 +455,7 @@ impl Sub<&Vector3f> for Vector3f {
         Self::Output {
             x: self.x - rhs.x,
             y: self.y - rhs.y,
-            z: self.z - rhs.z,
+            z: self.z - rhs.z
         }
     }
 }
@@ -457,7 +465,7 @@ impl Mul<&Vector3f> for Vector3f {
         Self::Output {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
-            z: self.z * rhs.z,
+            z: self.z * rhs.z
         }
     }
 }
@@ -467,7 +475,7 @@ impl Div<&Vector3f> for Vector3f {
         Self::Output {
             x: self.x / rhs.x,
             y: self.y / rhs.y,
-            z: self.z / rhs.z,
+            z: self.z / rhs.z
         }
     }
 }
@@ -477,7 +485,7 @@ impl Neg for &Vector3f {
         Self::Output {
             x: -self.x,
             y: -self.y,
-            z: -self.z,
+            z: -self.z
         }
     }
 }
@@ -519,7 +527,7 @@ where
         Self::Output {
             x: self.x + rhs,
             y: self.y + rhs,
-            z: self.z + rhs,
+            z: self.z + rhs
         }
     }
 }
@@ -533,7 +541,7 @@ where
         Self::Output {
             x: self.x - rhs,
             y: self.y - rhs,
-            z: self.z - rhs,
+            z: self.z - rhs
         }
     }
 }
@@ -547,7 +555,7 @@ where
         Self::Output {
             x: self.x * rhs,
             y: self.y * rhs,
-            z: self.z * rhs,
+            z: self.z * rhs
         }
     }
 }
@@ -567,7 +575,7 @@ where
         Self::Output {
             x: self.x / rhs,
             y: self.y / rhs,
-            z: self.z / rhs,
+            z: self.z / rhs
         }
     }
 }
@@ -579,7 +587,7 @@ where
         let rhs = rhs.into();
         self.x += rhs;
         self.y += rhs;
-        self.z += rhs
+        self.z += rhs;
     }
 }
 impl<T> SubAssign<T> for Vector3f
@@ -590,7 +598,7 @@ where
         let rhs = rhs.into();
         self.x -= rhs;
         self.y -= rhs;
-        self.z -= rhs
+        self.z -= rhs;
     }
 }
 impl<T> MulAssign<T> for Vector3f
@@ -627,7 +635,7 @@ impl Index<usize> for Vector3f {
             0 => &self.x,
             1 => &self.y,
             2 => &self.z,
-            _ => panic!("index out of bounds"),
+            _ => panic!("index out of bounds")
         }
     }
 }
@@ -645,25 +653,4 @@ impl From<Vector3f> for [f32; 3] {
     fn from(v: Vector3f) -> Self {
         [v.x, v.y, v.z]
     }
-}
-
-#[derive(Clone, Default, Copy)]
-pub struct Vector3d {
-    x: f64,
-    y: f64,
-    z: f64,
-}
-
-#[derive(Clone, Default, Copy)]
-pub struct Vector3i {
-    x: i32,
-    y: i32,
-    z: i32,
-}
-
-#[derive(Clone, Default, Copy)]
-pub struct Vector3l {
-    x: i64,
-    y: i64,
-    z: i64,
 }

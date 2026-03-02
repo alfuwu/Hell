@@ -23,7 +23,7 @@
 pub struct NoisePeriod {
     pub(crate) xf: i32,
     pub(crate) yf: i32,
-    zf: i32,
+    zf: i32
 }
 impl NoisePeriod {
     pub const NULL: Self = Self::new(0, 0, 0);
@@ -33,7 +33,7 @@ impl NoisePeriod {
         Self {
             xf: Self::get_factor(x_period),
             yf: Self::get_factor(y_period),
-            zf: Self::get_factor(z_period),
+            zf: Self::get_factor(z_period)
         }
     }
 

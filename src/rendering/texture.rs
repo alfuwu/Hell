@@ -13,34 +13,25 @@ use vulkano::sync::GpuFuture;
 #[derive(Clone, PartialEq)]
 pub enum SampleType {
     POINT,
-    LINEAR,
+    LINEAR
 }
 
 #[derive(Clone, PartialEq)]
 pub struct Texture {
     pub texture: Arc<ImageView>,
-    pub sample_type: SampleType,
+    pub sample_type: SampleType
 }
 impl Texture {
     pub const fn new(texture: Arc<ImageView>, sample_type: SampleType) -> Self {
-        Self {
-            texture,
-            sample_type,
-        }
+        Self { texture, sample_type }
     }
 
     pub const fn point(texture: Arc<ImageView>) -> Self {
-        Self {
-            texture,
-            sample_type: SampleType::POINT,
-        }
+        Self { texture, sample_type: SampleType::POINT }
     }
 
     pub const fn linear(texture: Arc<ImageView>) -> Self {
-        Self {
-            texture,
-            sample_type: SampleType::LINEAR,
-        }
+        Self { texture, sample_type: SampleType::LINEAR }
     }
 
     pub fn width(&self) -> u32 {
@@ -58,7 +49,8 @@ impl Texture {
         let extent = image.extent();
         let width = extent[0];
         let height = extent[1];
-        let pixel_count = (width * height * 4) as usize; // RGBA
+        let depth = extent[2];
+        let pixel_count = (width * height * depth * 4) as usize; // RGBA
 
         let renderer = Application::get().renderer.as_ref().unwrap();
 

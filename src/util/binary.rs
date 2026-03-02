@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Error, Read, Write};
 
 pub fn peek<R: Read>(buf: &mut BufReader<R>) -> Result<u8, Error> {

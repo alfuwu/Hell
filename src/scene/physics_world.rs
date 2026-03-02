@@ -15,7 +15,7 @@ pub struct PhysicsWorld {
     pub ccd_solver: CCDSolver,
     pub event_collector: ChannelEventCollector,
     pub collision_recv: Receiver<CollisionEvent>,
-    pub contact_force_recv: Receiver<ContactForceEvent>,
+    pub contact_force_recv: Receiver<ContactForceEvent>
 }
 impl PhysicsWorld {
     pub fn new() -> Self {
@@ -56,6 +56,17 @@ impl PhysicsWorld {
             &mut self.ccd_solver,
             &(),
             &self.event_collector
+        );
+    }
+    
+    pub fn remove(&mut self, rb_handle: RigidBodyHandle) {
+        self.rigid_body_set.remove(
+            rb_handle,
+            &mut self.island_manager,
+            &mut self.collider_set,
+            &mut self.impulse_joint_set,
+            &mut self.multibody_joint_set,
+            true
         );
     }
 }

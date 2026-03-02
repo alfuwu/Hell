@@ -12,7 +12,7 @@ pub struct Vertex {
     pub normal: [f32; 3],
 
     #[format(R32G32_SFLOAT)]
-    pub uv: [f32; 2],
+    pub uv: [f32; 2]
 }
 impl Vertex {
     pub const fn default() -> Self {
@@ -23,7 +23,7 @@ impl Vertex {
         Self {
             position: [x, y, z],
             normal: [nx, ny, nz],
-            uv: [u, v],
+            uv: [u, v]
         }
     }
 
@@ -134,66 +134,5 @@ impl Vertex {
             flat_vertices.push(vertices[idx as usize].clone());
         }
         flat_vertices
-    }
-}
-
-pub mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: "#version 460
-layout(set = 0, binding = 0) uniform Camera {
-    mat4 view_proj;
-} camera;
-layout(push_constant) uniform PushConstants {
-    mat4 model;
-} push;
-
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec2 uv;
-
-layout(location = 0) out vec3 v_world_pos;
-layout(location = 1) out vec3 v_normal;
-layout(location = 2) out vec2 v_uv;
-
-void main() {
-    mat4 model = push.model;
-
-    vec4 world_pos = model * vec4(position, 1.0);
-
-    v_world_pos = world_pos.xyz;
-    v_normal = mat3(model) * normal; // basic normal transform
-    v_uv = uv;
-
-    gl_Position = camera.view_proj * world_pos;
-}",
-    }
-}
-
-pub mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: "#version 460
-layout(set = 0, binding = 1) uniform sampler2D tex;
-
-layout(location = 0) in vec3 v_world_pos;
-layout(location = 1) in vec3 v_normal;
-layout(location = 2) in vec2 v_uv;
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    vec3 light_dir = normalize(vec3(1.0, 1.0, 1.0));
-
-    vec3 normal = normalize(v_normal);
-    float diff = max(dot(normal, light_dir), 0.0);
-
-    vec3 tex_color = texture(tex, v_uv).rgb;
-
-    vec3 ambient = 0.2 * tex_color;
-    vec3 diffuse = diff * tex_color;
-
-    f_color = vec4(ambient + diffuse, 1.0);
-}",
     }
 }

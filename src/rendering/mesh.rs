@@ -1,4 +1,4 @@
-use std::f32::consts::{FRAC_PI_2, TAU};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::app::Application;
 use crate::rendering::renderer::Renderer;
 use crate::rendering::texture::{SampleType, Texture};
@@ -24,7 +24,7 @@ pub struct Mesh {
     pub bounds_min: Vector3f,
     pub bounds_max: Vector3f,
 
-    pub texture: Option<Texture>,
+    pub texture: Option<Texture>
 }
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Option<Vec<u32>>, texture: Option<Texture>) -> Self {
@@ -49,20 +49,13 @@ impl Mesh {
         boundless
     }
 
-    pub fn boundless(
-        vertices: Vec<Vertex>,
-        indices: Option<Vec<u32>>,
-        texture: Option<Texture>,
-    ) -> Self {
+    pub fn boundless(vertices: Vec<Vertex>, indices: Option<Vec<u32>>, texture: Option<Texture>) -> Self {
         let vertex_count = vertices.len() as u32;
         let mut index_count = 0;
 
-        let mem_alloc = Application::get()
-            .renderer
-            .as_ref()
-            .unwrap()
-            .mem_alloc
-            .clone();
+        let mem_alloc = Application::get().renderer
+            .as_ref().unwrap()
+            .mem_alloc.clone();
         let vertex_buffer =
             Renderer::create_buffer(mem_alloc.clone(), vertices, BufferUsage::VERTEX_BUFFER);
 
@@ -78,7 +71,7 @@ impl Mesh {
             index_count,
             bounds_min: Vector3f::ZERO,
             bounds_max: Vector3f::ZERO,
-            texture,
+            texture
         }
     }
 
@@ -165,16 +158,41 @@ impl Mesh {
         Self::new(vertices, Some(indices), texture)
     }
 
-    pub fn plane(texture: Option<Texture>) -> Self {
-        let vertices = vec![
-            Vertex::vertex(-0.5, 0.0, -0.5).uv(0.0, 0.0), // 0
-            Vertex::vertex( 0.5, 0.0, -0.5).uv(1.0, 0.0), // 1
-            Vertex::vertex(-0.5, 0.0,  0.5).uv(0.0, 1.0), // 2
-            Vertex::vertex( 0.5, 0.0,  0.5).uv(1.0, 1.0), // 3
-        ];
-        let indices = vec![0, 1, 2, 1, 3, 2];
-        let mut vertices = vertices;
-        Vertex::calculate_normals_expensively(&mut vertices, &indices);
+    pub fn plane(subdivisions: u8, texture: Option<Texture>) -> Self {
+        let n = subdivisions as u32 + 1; // number of quads per side
+        let step = 1.0 / n as f32;
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for row in 0..=n {
+            for col in 0..=n {
+                let u = col as f32 * step;
+                let v = row as f32 * step;
+                let x = -0.5 + u;
+                let z = -0.5 + v;
+                vertices.push(Vertex::vertex(x, 0.0, z).uv(u, v));
+            }
+        }
+
+        let cols = n + 1;
+        for row in 0..n {
+            for col in 0..n {
+                let tl = row * cols + col;
+                let tr = tl + 1;
+                let bl = tl + cols;
+                let br = bl + 1;
+
+                indices.push(tl);
+                indices.push(tr);
+                indices.push(bl);
+
+                indices.push(tr);
+                indices.push(br);
+                indices.push(bl);
+            }
+        }
+        Vertex::calculate_normals(&mut vertices, &indices);
         Self::new(vertices, Some(indices), texture)
     }
 
@@ -183,7 +201,7 @@ impl Mesh {
         let mut indices = Vec::new();
 
         for stack in 0..=stacks {
-            let phi = std::f32::consts::PI * stack as f32 / stacks as f32; // 0..PI
+            let phi = PI * stack as f32 / stacks as f32; // 0..PI
             let y = phi.cos();
             let r = phi.sin();
 
@@ -430,7 +448,7 @@ impl Mesh {
         file.read_exact(&mut header_buf)?;
         let header = String::from_utf8(header_buf.to_vec()).unwrap();
         if header != "HYLEUS_M" {
-            println!("Corrupted/invalid mod header: {}. Not continuing.", header);
+            eprintln!("Corrupted/invalid mod header: {}. Not continuing.", header);
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "Corrupted/invalid mod header",
@@ -469,7 +487,7 @@ impl Mesh {
                 vertices[i].normal = [
                     read_f32(&mut reader)?,
                     read_f32(&mut reader)?,
-                    read_f32(&mut reader)?,
+                    read_f32(&mut reader)?
                 ];
             }
         }
@@ -481,12 +499,12 @@ impl Mesh {
             };
             let width = read_u32(&mut reader)?;
             let height = read_u32(&mut reader)?;
-            let depth = if mod_type & 0x10 != 0 {
+            let depth = if mod_type & 0x10 != 0 { // bit 5 = mesh has 3d texture (for some reason)
                 read_u32(&mut reader)?
             } else {
                 1
             };
-            let pixel_count = (width * height * 4) as usize;
+            let pixel_count = (width * height * depth * 4) as usize;
             let mut pixels = vec![0u8; pixel_count];
             let mut total_read = 0;
             while total_read < pixel_count {
@@ -494,19 +512,15 @@ impl Mesh {
                 if n == 0 {
                     return Err(Error::new(
                         ErrorKind::UnexpectedEof,
-                        "unexpected EOF reading pixels",
+                        "Unexpected EOF reading pixels",
                     ));
                 }
                 total_read += n;
             }
-            println!(
-                "read {} bytes, wanted to read {} bytes",
-                total_read, pixel_count
-            );
 
             let renderer = Application::get().renderer.as_ref().unwrap();
             texture = Some(Texture::new(
-                ImageView::new_default(renderer.create_image(pixels, width, height)).unwrap(),
+                ImageView::new_default(renderer.create_image3d(pixels, width, height, depth)).unwrap(),
                 sample_type,
             ));
         }
@@ -518,23 +532,20 @@ impl Mesh {
             } else {
                 None
             },
-            texture,
+            texture
         ))
     }
 
     pub fn save(&self, file: File, bake_normals: bool, bake_texture: bool) -> Result<(), Error> {
         let vertices: Vec<Vertex> = self.vertex_buffer.read().unwrap().to_vec();
-        let indices: Option<Vec<u32>> = self
-            .index_buffer
-            .as_ref()
+        let indices: Option<Vec<u32>> = self.index_buffer.as_ref()
             .map(|b| b.read().unwrap().to_vec());
 
         let has_indices = indices.is_some();
         let has_uvs = vertices.iter().any(|v| v.uv[0] != 0.0 || v.uv[1] != 0.0);
-        let has_normals = bake_normals
-            && vertices
-                .iter()
-                .any(|v| v.normal[0] != 0.0 || v.normal[1] != 0.0 || v.normal[2] != 0.0);
+        let has_normals = bake_normals && vertices.iter().any(|v|
+            v.normal[0] != 0.0 || v.normal[1] != 0.0 || v.normal[2] != 0.0
+        );
         let has_texture = bake_texture && self.texture.is_some();
         let has_depth = has_texture && self.texture.as_ref().unwrap().depth() > 1;
 
@@ -590,11 +601,6 @@ impl Mesh {
             }
 
             let pixels: Vec<u8> = texture.read_pixels().unwrap();
-            println!(
-                "pixels: {}; expected length: {}",
-                pixels.len(),
-                texture.width() * texture.height() * 4
-            );
             writer.write_all(&pixels)?;
         }
         Ok(())
