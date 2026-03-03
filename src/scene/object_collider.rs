@@ -2,12 +2,14 @@ use rapier3d::prelude::*;
 use crate::rendering::mesh::Mesh;
 use crate::util::vectors::{Axis, Vector3f};
 
+#[derive(PartialEq)]
 pub enum ColliderShape {
     Box(Option<Vector3f>),
     Sphere(Option<f32>),
     Mesh
 }
 
+#[derive(PartialEq)]
 pub struct ObjectCollider {
     pub shape: ColliderShape,
     pub is_static: bool,

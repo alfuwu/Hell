@@ -495,7 +495,7 @@ impl Mesh {
         if mod_type & 0x8 != 0 {
             let sample_type = match read_byte(&mut reader)? {
                 0 => SampleType::POINT,
-                _ => SampleType::LINEAR,
+                _ => SampleType::LINEAR
             };
             let width = read_u32(&mut reader)?;
             let height = read_u32(&mut reader)?;
@@ -523,6 +523,10 @@ impl Mesh {
                 ImageView::new_default(renderer.create_image3d(pixels, width, height, depth)).unwrap(),
                 sample_type,
             ));
+        }
+        // bit 6 = mesh has vertex weights & an armature
+        if mod_type & 0x20 != 0 {
+            
         }
 
         Ok(Self::new(

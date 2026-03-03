@@ -25,7 +25,8 @@ impl Scene {
     pub fn add_object(&mut self, mut object: Object) {
         if let Some(col) = object.collider.as_mut() {
             let pos = object.position;
-            let rot = Rot3::from_euler(EulerRot::XYZ, object.rotation.x, object.rotation.y, object.rotation.z);
+            let r = object.rotation;
+            let rot = Rot3::from_euler(EulerRot::XYZ, r.x, r.y, r.z);
 
             let iso = Pose::from_parts(
                 Vec3::new(pos.x, pos.y, pos.z),
@@ -111,6 +112,11 @@ impl Scene {
         let mut objects = take(&mut self.objects);
         for object in &mut objects {
             object.update(self, delta_time);
+            if object.recreate_collider {
+                self.rebuild_collider(object);
+            } else if object.transform_changed {
+                self.flush_transform(object);
+            }
         }
         objects.append(&mut self.objects);
         self.objects = objects;
@@ -130,14 +136,14 @@ impl Scene {
 
         for object in &mut self.objects {
             if let Some(col) = object.collider.as_ref() {
+                if col.is_static { continue; }
                 if let Some(rb_handle) = col.body_handle {
-                    if col.is_static { continue; }
                     if let Some(rb) = self.physics.rigid_body_set.get(rb_handle) {
                         let t = rb.translation();
                         object.position = Vector3f::new(t.x, t.y, t.z);
 
                         let r = rb.rotation().to_euler(EulerRot::XYZ);
-                        object.rotation = Vector3f::from_array(r.into());
+                        object.rotation = Vector3f::from_array([r.0, r.1, r.2]);
 
                         let lv = rb.linvel();
                         if let Some(behavior) = object.behavior.as_mut() {
@@ -222,5 +228,77 @@ impl Scene {
             }
         }
         None
+    }
+
+    fn flush_transform(&mut self, obj: &Object) {
+        let Some(col) = &obj.collider else { return };
+        let Some(rb_handle) = col.body_handle else { return };
+
+        let pos = obj.position;
+        let rot = Rot3::from_euler(EulerRot::XYZ, obj.rotation.x, obj.rotation.y, obj.rotation.z);
+        let iso = Pose::from_parts(Vec3::new(pos.x, pos.y, pos.z), rot);
+
+        if let Some(rb) = self.physics.rigid_body_set.get_mut(rb_handle) {
+            rb.set_position(iso, true);
+        }
+    }
+
+    fn rebuild_collider(&mut self, obj: &mut Object) {
+        let Some(col) = &obj.collider else { return };
+
+        let (old_linvel, old_angvel) = col.body_handle
+            .and_then(|h| self.physics.rigid_body_set.get(h))
+            .map(|rb| (rb.linvel(), rb.angvel()))
+            .unwrap_or_default();
+
+        if let Some(h) = col.body_handle {
+            self.physics.remove(h);
+        }
+
+        let pos = obj.position();
+        let rot = Rot3::from_euler(EulerRot::XYZ, obj.rotation().x, obj.rotation().y, obj.rotation().z);
+        let iso = Pose::from_parts(Vec3::new(pos.x, pos.y, pos.z), rot);
+
+        let collider_builder = col.build_rapier_collider(&obj.mesh(), obj.scale(), obj.pivot());
+
+        let col = obj.collider.as_mut().unwrap();
+
+        if col.is_static {
+            let rb_handle = self.physics.rigid_body_set.insert(
+                RigidBodyBuilder::fixed().pose(iso).build()
+            );
+            let col_handle = self.physics.collider_set.insert_with_parent(
+                collider_builder.build(), rb_handle, &mut self.physics.rigid_body_set
+            );
+            col.body_handle    = Some(rb_handle);
+            col.collider_handle = Some(col_handle);
+        } else {
+            let mass = obj.behavior.as_ref()
+                .and_then(|b| b.as_physics())
+                .map(|p| p.mass)
+                .unwrap_or(1.0);
+
+            let rb = RigidBodyBuilder::dynamic()
+                .pose(iso)
+                .additional_mass(mass)
+                .gravity_scale(col.gravity_scale)
+                .enabled_rotations(col.allow_rot_x, col.allow_rot_y, col.allow_rot_z)
+                .build();
+
+            let rb_handle = self.physics.rigid_body_set.insert(rb);
+            let col_handle = self.physics.collider_set.insert_with_parent(
+                collider_builder.build(), rb_handle, &mut self.physics.rigid_body_set
+            );
+            col.body_handle    = Some(rb_handle);
+            col.collider_handle = Some(col_handle);
+
+            // restore velocity
+            if let Some(rb) = self.physics.rigid_body_set.get_mut(rb_handle) {
+                rb.set_linvel(old_linvel, true);
+                rb.set_angvel(old_angvel, true);
+            }
+        }
+
+        obj.recreate_collider = false;
     }
 }
