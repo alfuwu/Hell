@@ -1,11 +1,14 @@
 use crate::util::vectors::Vector3f;
 use std::ops::Mul;
+use crate::util::quaternion::Quaternionf;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Matrix4f {
     pub m: [[f32; 4]; 4]
 }
 impl Matrix4f {
+    pub const IDENTITY: Matrix4f = Matrix4f::identity();
+
     pub const fn new(m: [[f32; 4]; 4]) -> Self {
         Self { m }
     }
@@ -98,6 +101,52 @@ impl Matrix4f {
                 [oc * y * x + z * s, oc * y * y + c, oc * y * z - x * s, 0.0],
                 [oc * z * x - y * s, oc * z * y + x * s, oc * z * z + c, 0.0],
                 [0.0,                0.0,                0.0,            1.0]
+            ]
+        }
+    }
+
+    pub fn rotation(q: &Quaternionf) -> Self {
+        let (x, y, z, w) = (q.x, q.y, q.z, q.w);
+        Self {
+            m: [
+                [1.0 - 2.0*(y*y + z*z), 2.0*(x*y - w*z),       2.0*(x*z + w*y),       0.0],
+                [2.0*(x*y + w*z),       1.0 - 2.0*(x*x + z*z), 2.0*(y*z - w*x),       0.0],
+                [2.0*(x*z - w*y),       2.0*(y*z + w*x),       1.0 - 2.0*(x*x + y*y), 0.0],
+                [0.0,                   0.0,                   0.0,                   1.0]
+            ]
+        }
+    }
+
+    pub fn transform(position: &Vector3f, rotation: &Quaternionf, scale: &Vector3f, pivot: &Vector3f) -> Self {
+        let (qx, qy, qz, qw) = (rotation.x, rotation.y, rotation.z, rotation.w);
+
+        let r00 = 1.0 - 2.0 * (qy*qy + qz*qz);
+        let r01 = 2.0 * (qx*qy - qw*qz);
+        let r02 = 2.0 * (qx*qz + qw*qy);
+        let r10 = 2.0 * (qx*qy + qw*qz);
+        let r11 = 1.0 - 2.0 * (qx*qx + qz*qz);
+        let r12 = 2.0 * (qy*qz - qw*qx);
+        let r20 = 2.0 * (qx*qz - qw*qy);
+        let r21 = 2.0 * (qy*qz + qw*qx);
+        let r22 = 1.0 - 2.0 * (qx*qx + qy*qy);
+
+        let (sx, sy, sz) = (scale.x, scale.y, scale.z);
+        let m00 = r00*sx;  let m01 = r01*sy;  let m02 = r02*sz;
+        let m10 = r10*sx;  let m11 = r11*sy;  let m12 = r12*sz;
+        let m20 = r20*sx;  let m21 = r21*sy;  let m22 = r22*sz;
+
+        // y is negated
+        let (px, py, pz) = (pivot.x, pivot.y, pivot.z);
+        let m03 = -m00*px - m01*py - m02*pz + px + position.x;
+        let m13 = -m10*px - m11*py - m12*pz + py - position.y;
+        let m23 = -m20*px - m21*py - m22*pz + pz + position.z;
+
+        Self {
+            m: [
+                [m00, m01, m02, m03],
+                [m10, m11, m12, m13],
+                [m20, m21, m22, m23],
+                [0.0, 0.0, 0.0, 1.0],
             ]
         }
     }
@@ -446,6 +495,8 @@ pub struct Matrix3f {
     pub m: [[f32; 3]; 3],
 }
 impl Matrix3f {
+    pub const IDENTITY: Matrix3f = Matrix3f::identity();
+
     pub const fn new(m: [[f32; 3]; 3]) -> Self {
         Self { m }
     }

@@ -12,7 +12,13 @@ pub struct Vertex {
     pub normal: [f32; 3],
 
     #[format(R32G32_SFLOAT)]
-    pub uv: [f32; 2]
+    pub uv: [f32; 2],
+
+    #[format(R32G32B32A32_UINT)]
+    pub bone_indices: [u32; 4],
+
+    #[format(R32G32B32A32_SFLOAT)]
+    pub bone_weights: [f32; 4]
 }
 impl Vertex {
     pub const fn default() -> Self {
@@ -23,7 +29,9 @@ impl Vertex {
         Self {
             position: [x, y, z],
             normal: [nx, ny, nz],
-            uv: [u, v]
+            uv: [u, v],
+            bone_indices: [u32::MAX; 4],
+            bone_weights: [0.0; 4],
         }
     }
 

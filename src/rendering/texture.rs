@@ -10,7 +10,7 @@ use vulkano::image::view::ImageView;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 
-#[derive(Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum SampleType {
     POINT,
     LINEAR

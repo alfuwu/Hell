@@ -7,18 +7,22 @@ use std::mem::take;
 use rapier3d::dynamics::RigidBodyBuilder;
 use rapier3d::glamx::{EulerRot, Vec3};
 use rapier3d::prelude::{CollisionEvent, Pose, RigidBody, Rot3, Vector};
+use crate::util::hyl_random::HylRandom;
+use crate::util::quaternion::Quaternionf;
 
 pub struct Scene {
     pub objects: Vec<Object>,
     pub camera: Box<dyn Camera>,
-    pub physics: PhysicsWorld
+    pub physics: PhysicsWorld,
+    pub rand: HylRandom
 }
 impl Scene {
     pub fn new(aspect: f32) -> Self {
         Self {
             objects: vec![],
             camera: Box::new(Camera3D::new(aspect)),
-            physics: PhysicsWorld::new()
+            physics: PhysicsWorld::new(),
+            rand: HylRandom::new()
         }
     }
 
@@ -26,12 +30,9 @@ impl Scene {
         if let Some(col) = object.collider.as_mut() {
             let pos = object.position;
             let r = object.rotation;
-            let rot = Rot3::from_euler(EulerRot::XYZ, r.x, r.y, r.z);
+            let rot = Rot3::from_xyzw(r.x, r.y, r.z, r.w);
 
-            let iso = Pose::from_parts(
-                Vec3::new(pos.x, pos.y, pos.z),
-                rot,
-            );
+            let iso = Pose::from_parts(Vec3::new(pos.x, pos.y, pos.z), rot);
 
             let collider_builder = col.build_rapier_collider(&object.mesh, object.scale, object.pivot);
 
@@ -142,8 +143,8 @@ impl Scene {
                         let t = rb.translation();
                         object.position = Vector3f::new(t.x, t.y, t.z);
 
-                        let r = rb.rotation().to_euler(EulerRot::XYZ);
-                        object.rotation = Vector3f::from_array([r.0, r.1, r.2]);
+                        let r = rb.rotation();
+                        object.rotation = Quaternionf::new(r.x, r.y, r.z, r.w);
 
                         let lv = rb.linvel();
                         if let Some(behavior) = object.behavior.as_mut() {
@@ -235,7 +236,7 @@ impl Scene {
         let Some(rb_handle) = col.body_handle else { return };
 
         let pos = obj.position;
-        let rot = Rot3::from_euler(EulerRot::XYZ, obj.rotation.x, obj.rotation.y, obj.rotation.z);
+        let rot = Rot3::from_xyzw(obj.rotation.x, obj.rotation.y, obj.rotation.z, obj.rotation.w);
         let iso = Pose::from_parts(Vec3::new(pos.x, pos.y, pos.z), rot);
 
         if let Some(rb) = self.physics.rigid_body_set.get_mut(rb_handle) {

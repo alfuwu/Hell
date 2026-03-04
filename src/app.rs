@@ -26,9 +26,12 @@ use crate::rendering::texture::Texture;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
 use crate::rendering::vertex::Vertex;
+use crate::scene::behaviors::tidal_behavior::TidalBehavior;
+use crate::scene::behaviors::wander_behavior::WanderBehavior;
 use crate::scene::object_collider::ObjectCollider;
 use crate::util::frame_counter::FrameCounter;
 use crate::util::noise::perlin::gradient_noise_2d::octave_noise;
+use crate::util::quaternion::Quaternionf;
 use crate::util::vectors::{Axis, Vector3f};
 
 const WIDTH: u32 = 800;
@@ -225,31 +228,48 @@ impl Application {
 
         Vertex::calculate_normals(&mut vertices, &indices);
 
-        let mesh = Arc::new(Mesh::new(
-            vertices,
-            Some(indices.clone()),
-            Some(Texture::linear(ImageView::new_default(renderer.create_image(texture.clone(), TEX_SIZE as u32 + 1, TEX_SIZE as u32 + 1)).unwrap()))
-        ));
         self.scene.add_object(Object::new(
-            mesh.clone(),
+            Arc::new(Mesh::new(
+                vertices,
+                Some(indices.clone()),
+                Some(Texture::linear(ImageView::new_default(renderer.create_image(texture.clone(), TEX_SIZE as u32 + 1, TEX_SIZE as u32 + 1)).unwrap()))
+            )).clone(),
             Vector3f::ZERO,
-            Vector3f::ZERO,
+            Quaternionf::IDENTITY,
             Vector3f::uniform(10.0)
         ).with_collider(ObjectCollider::new_mesh(true)));
 
         self.scene.add_object(Object::new(
             Arc::new(Mesh::cube(None)),
             Vector3f::new(0.0, 100.0, 0.0),
-            Vector3f::new(0.0, 0.0, 0.0),
+            Quaternionf::IDENTITY,
             Vector3f::uniform(1.0)
         ).with_collider(ObjectCollider::new_box(None, false)));
 
         self.scene.add_object(Object::new(
             Arc::new(Mesh::plane(5, None)),
             Vector3f::new(10.0, -10.0, 10.0),
-            Vector3f::new(0.0, 0.0, 0.0),
+            Quaternionf::IDENTITY,
             Vector3f::uniform(200.0)
-        ));
+        ).with_behavior(Box::new(TidalBehavior::new(1.0, 0.1))));
+
+        let wanderer = Object::new(
+            Arc::new(Mesh::capsule(16, 16, None)),
+            Vector3f::new(0.0, 10.0, 0.0),
+            Quaternionf::IDENTITY,
+            Vector3f::uniform(1.0)
+        )
+            .with_behavior(Box::new(WanderBehavior::new(1.0)))
+            .with_collider(
+                ObjectCollider::new_box(None, false)
+                    .mass(1.0)
+                    .gravity_scale(1.0)
+                    .lock_rot(Axis::X)
+                    .lock_rot(Axis::Y)
+                    .lock_rot(Axis::Z)
+            );
+
+        self.scene.add_object(wanderer);
     }
 
     unsafe fn draw(&mut self) {

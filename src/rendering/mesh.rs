@@ -1,5 +1,6 @@
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::app::Application;
+use crate::rendering::animation::armature::Armature;
 use crate::rendering::renderer::Renderer;
 use crate::rendering::texture::{SampleType, Texture};
 use crate::rendering::vertex::Vertex;
@@ -14,7 +15,7 @@ use vulkano::buffer::{BufferUsage, Subbuffer};
 use vulkano::image::view::ImageView;
 use zstd::{Decoder, Encoder};
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Mesh {
     pub vertex_buffer: Subbuffer<[Vertex]>,
     pub index_buffer: Option<Subbuffer<[u32]>>,
@@ -24,7 +25,8 @@ pub struct Mesh {
     pub bounds_min: Vector3f,
     pub bounds_max: Vector3f,
 
-    pub texture: Option<Texture>
+    pub texture: Option<Texture>,
+    pub armature: Option<Armature>
 }
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Option<Vec<u32>>, texture: Option<Texture>) -> Self {
@@ -71,7 +73,8 @@ impl Mesh {
             index_count,
             bounds_min: Vector3f::ZERO,
             bounds_max: Vector3f::ZERO,
-            texture
+            texture,
+            armature: None
         }
     }
 
@@ -437,6 +440,18 @@ impl Mesh {
         let mut vertices = vertices;
         Vertex::calculate_normals_expensively(&mut vertices, &indices);
         Self::new(vertices, Some(indices), texture)
+    }
+
+    /// Clones this mesh using the provided texture.
+    pub fn with_texture(&self, texture: Texture) -> Self {
+        let mut new = self.clone();
+        new.texture = Some(texture);
+        new
+    }
+
+    pub fn with_armature(mut self, armature: Armature) -> Self {
+        self.armature = Some(armature);
+        self
     }
 
     pub fn from_mod(file: &mut File) -> Result<Self, Error> {

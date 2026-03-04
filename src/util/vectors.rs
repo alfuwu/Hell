@@ -517,10 +517,13 @@ impl DivAssign<Vector3f> for &mut Vector3f {
         self.z /= rhs.z;
     }
 }
-impl<T> Add<T> for &Vector3f
-where
-    T: Into<f32>,
-{
+impl Mul<&Vector3f> for f32 {
+    type Output = Vector3f;
+    fn mul(self, rhs: &Vector3f) -> Self::Output {
+        rhs * self
+    }
+}
+impl<T: Into<f32>> Add<T> for &Vector3f {
     type Output = Vector3f;
     fn add(self, rhs: T) -> Self::Output {
         let rhs = rhs.into();
@@ -531,10 +534,7 @@ where
         }
     }
 }
-impl<T> Sub<T> for &Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> Sub<T> for &Vector3f {
     type Output = Vector3f;
     fn sub(self, rhs: T) -> Self::Output {
         let rhs = rhs.into();
@@ -545,10 +545,7 @@ where
         }
     }
 }
-impl<T> Mul<T> for &Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> Mul<T> for &Vector3f {
     type Output = Vector3f;
     fn mul(self, rhs: T) -> Self::Output {
         let rhs = rhs.into();
@@ -559,16 +556,7 @@ where
         }
     }
 }
-impl Mul<&Vector3f> for f32 {
-    type Output = Vector3f;
-    fn mul(self, rhs: &Vector3f) -> Self::Output {
-        rhs * self
-    }
-}
-impl<T> Div<T> for &Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> Div<T> for &Vector3f {
     type Output = Vector3f;
     fn div(self, rhs: T) -> Self::Output {
         let rhs = rhs.into();
@@ -579,10 +567,7 @@ where
         }
     }
 }
-impl<T> AddAssign<T> for Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> AddAssign<T> for Vector3f {
     fn add_assign(&mut self, rhs: T) {
         let rhs = rhs.into();
         self.x += rhs;
@@ -590,10 +575,7 @@ where
         self.z += rhs;
     }
 }
-impl<T> SubAssign<T> for Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> SubAssign<T> for Vector3f {
     fn sub_assign(&mut self, rhs: T) {
         let rhs = rhs.into();
         self.x -= rhs;
@@ -601,10 +583,7 @@ where
         self.z -= rhs;
     }
 }
-impl<T> MulAssign<T> for Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> MulAssign<T> for Vector3f {
     fn mul_assign(&mut self, rhs: T) {
         let rhs = rhs.into();
         self.x *= rhs;
@@ -612,10 +591,7 @@ where
         self.z *= rhs;
     }
 }
-impl<T> DivAssign<T> for Vector3f
-where
-    T: Into<f32>,
-{
+impl<T: Into<f32>> DivAssign<T> for Vector3f {
     fn div_assign(&mut self, rhs: T) {
         let rhs = rhs.into();
         self.x /= rhs;

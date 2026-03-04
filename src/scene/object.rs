@@ -4,8 +4,11 @@ use crate::scene::object_collider::ObjectCollider;
 use crate::scene::scene::Scene;
 use crate::util::vectors::Vector3f;
 use std::sync::Arc;
+use vulkano::buffer::Subbuffer;
 use vulkano::descriptor_set::DescriptorSet;
 use vulkano::pipeline::GraphicsPipeline;
+use crate::rendering::animation::animation::AnimationLayer;
+use crate::util::quaternion::Quaternionf;
 
 pub struct Object {
     /// the object's mesh
@@ -16,7 +19,7 @@ pub struct Object {
     pub position: Vector3f,
     /// the euler rotation of the object
     /// call [set_rotation](Object::set_rotation) instead of mutating this
-    pub rotation: Vector3f,
+    pub rotation: Quaternionf,
     /// the size of the object
     /// call [set_scale](Object::set_scale) instead of mutating this
     pub scale: Vector3f,
@@ -27,6 +30,12 @@ pub struct Object {
     pub behavior: Option<Box<dyn Behavior>>,
     pub collider: Option<ObjectCollider>, // any changes to collider need to recreate collider
 
+    pub animation_layers: Vec<AnimationLayer>,
+
+    /// Per-frame bone matrix buffers
+    /// None if the mesh has no armature
+    pub(crate) bone_buffers: Vec<Option<Subbuffer<[[[f32; 4]; 4]]>>>,
+
     pub pipeline: Option<Arc<GraphicsPipeline>>,
     pub descriptor_set: Vec<Option<Arc<DescriptorSet>>>,
 
@@ -35,7 +44,7 @@ pub struct Object {
     pub(crate) recreate_descriptor_set: bool
 }
 impl Object {
-    pub fn new(mesh: Arc<Mesh>, position: Vector3f, rotation: Vector3f, scale: Vector3f) -> Self {
+    pub fn new(mesh: Arc<Mesh>, position: Vector3f, rotation: Quaternionf, scale: Vector3f) -> Self {
         let pivot = (mesh.bounds_min + mesh.bounds_max) * 0.5;
 
         Self {
@@ -47,6 +56,8 @@ impl Object {
             behavior: None,
             collider: None,
             pipeline: None,
+            animation_layers: vec![],
+            bone_buffers: vec![],
             descriptor_set: vec![],
             recreate_collider: false,
             transform_changed: false,
@@ -68,7 +79,7 @@ impl Object {
     }
 
     pub fn position(&self) -> Vector3f { self.position }
-    pub fn rotation(&self) -> Vector3f { self.rotation }
+    pub fn rotation(&self) -> Quaternionf { self.rotation }
     pub fn scale(&self) -> Vector3f { self.scale }
     pub fn pivot(&self) -> Vector3f { self.pivot }
     pub fn mesh(&self) -> &Arc<Mesh> { &self.mesh }
@@ -77,7 +88,7 @@ impl Object {
         self.position = pos;
         self.transform_changed = true;
     }
-    pub fn set_rotation(&mut self, rot: Vector3f) {
+    pub fn set_rotation(&mut self, rot: Quaternionf) {
         self.rotation = rot;
         self.transform_changed = true;
     }
@@ -110,6 +121,33 @@ impl Object {
                 (*behavior_ptr).update(self, scene, delta_time);
             }
         }
+        self.tick_animations(delta_time);
+    }
+
+    pub fn tick_animations(&mut self, delta_time: f32) {
+        let Some(armature) = &self.mesh.armature else { return };
+
+        for layer in &mut self.animation_layers {
+            layer.time += delta_time * layer.speed;
+
+            if layer.looping {
+                if let Some(anim) = armature.animations.iter().find(|a| a.name == layer.animation) {
+                    let duration = anim.duration();
+                    if duration > 0.0 {
+                        layer.time = layer.time.rem_euclid(duration);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn play_animation(&mut self, name: &str) {
+        self.animation_layers.clear();
+        self.animation_layers.push(AnimationLayer::new(name.to_string()));
+    }
+
+    pub fn stop_animations(&mut self) {
+        self.animation_layers.clear();
     }
     
     /// trades absolute certainty for much quicker compute times

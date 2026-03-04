@@ -8,6 +8,9 @@ layout(set = 0, binding = 0) uniform Camera {
 layout(push_constant) uniform PushConstants {
     mat4 model;
 } push;
+layout(set = 0, binding = 2) readonly buffer BoneMatrices {
+    mat4 bones[];
+} skin;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -17,13 +20,35 @@ layout(location = 0) out vec3 v_world_pos;
 layout(location = 1) out vec3 v_normal;
 layout(location = 2) out vec2 v_uv;
 
+layout(location = 3) in uvec4 bone_indices;
+layout(location = 4) in vec4 bone_weights;
+
 void main() {
-    mat4 model = push.model;
+    mat4 skin_matrix = mat4(0.0);
+    float total_weight = 0.0;
 
-    vec4 world_pos = model * vec4(position, 1.0);
+    for (int i = 0; i < 4; i++) {
+        if (bone_indices[i] < 0xFFFFFFFFu && bone_weights[i] > 0.0) {
+            skin_matrix += bone_weights[i] * skin.bones[bone_indices[i]];
+            total_weight += bone_weights[i];
+        }
+    }
 
+    if (total_weight < 0.0001) {
+        skin_matrix = mat4(1.0);
+    }
+    else if (abs(total_weight - 1.0) > 0.0001) {
+        skin_matrix /= total_weight;
+    }
+
+    vec4 skinned_pos = skin_matrix * vec4(position, 1.0);
+    vec4 world_pos = push.model * skinned_pos;
+
+    mat3 normal_skin = mat3(skin_matrix);
+    mat3 normal_model = mat3(push.model);
+
+    v_normal = normalize(normal_model * normal_skin * normal);
     v_world_pos = world_pos.xyz;
-    v_normal = mat3(model) * normal; // basic normal transform
     v_uv = uv;
 
     gl_Position = camera.view_proj * world_pos;

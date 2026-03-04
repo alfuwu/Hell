@@ -1,8 +1,8 @@
 use crate::scene::collision::CollisionEvent;
 use crate::scene::object::Object;
 use crate::scene::scene::Scene;
-use std::any::TypeId;
 use crate::util::vectors::Vector3f;
+use std::any::TypeId;
 
 pub struct PhysicsData {
     pub velocity: Vector3f,

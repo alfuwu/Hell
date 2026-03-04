@@ -84,7 +84,8 @@ pub struct Renderer {
     pub frames: Vec<PerFrameData>,
     pub current_frame: usize,
 
-    pub missing_texture: Arc<ImageView>
+    pub missing_texture: Arc<ImageView>,
+    pub identity_bone_buffer: Subbuffer<[[[f32; 4]; 4]]>
 }
 impl Renderer {
     pub fn new(
@@ -165,7 +166,12 @@ impl Renderer {
             frames,
             current_frame: 0,
 
-            missing_texture: Self::create_missing_texture(mem_alloc, command_alloc, queue)
+            missing_texture: Self::create_missing_texture(mem_alloc.clone(), command_alloc, queue),
+            identity_bone_buffer: Self::create_buffer(
+                mem_alloc,
+                vec![[[0.0f32; 4]; 4]],
+                BufferUsage::STORAGE_BUFFER
+            )
         };
         renderer
     }
@@ -490,18 +496,31 @@ impl Renderer {
 
         unsafe {
             for object in &mut scene.objects {
-                let pivot_translation = Matrix4f::translation(-object.pivot);
-                let rotation = Matrix4f::rotation_euler(
-                    object.rotation.x,
-                    object.rotation.y,
-                    object.rotation.z,
-                );
-                let pivot_back_translation = Matrix4f::translation(object.pivot);
-                let scale = Matrix4f::scale(object.scale);
-                let mut translation = Matrix4f::translation(object.position);
-                translation.m[1][3] *= -1.0;
+                let model = Matrix4f::transform(&object.position, &object.rotation, &object.scale, &object.pivot);
 
-                let model = translation * pivot_back_translation * rotation * scale * pivot_translation;
+                if let Some(armature) = &object.mesh.armature {
+                    if object.bone_buffers.len() != FRAMES_IN_FLIGHT {
+                        object.bone_buffers = (0..FRAMES_IN_FLIGHT).map(|_| {
+                            Some(Renderer::create_buffer(
+                                self.mem_alloc.clone(),
+                                vec![[[0.0; 4]; 4]; armature.bones.len()],
+                                BufferUsage::STORAGE_BUFFER
+                            ))
+                        }).collect();
+                    }
+
+                    let matrices = armature.evaluate(&object.animation_layers);
+                    let flat: Vec<[[f32; 4]; 4]> = matrices.iter()
+                        .map(|m| m.to_cols_array_2d())
+                        .collect();
+
+                    if let Some(Some(buf)) = object.bone_buffers.get(frame_idx) {
+                        let mut write = buf.write().unwrap();
+                        for (i, m) in flat.iter().enumerate() {
+                            write[i] = *m;
+                        }
+                    }
+                }
 
                 if object.recreate_descriptor_set || object.descriptor_set.len() != FRAMES_IN_FLIGHT || object.descriptor_set[frame_idx].is_none() {
                     object.descriptor_set.resize(FRAMES_IN_FLIGHT, None);
@@ -526,7 +545,15 @@ impl Renderer {
                                     self.missing_texture.clone(),
                                     self.point_sampler.clone()
                                 )
-                            }
+                            },
+                            WriteDescriptorSet::buffer(
+                                2,
+                                object.bone_buffers
+                                    .get(frame_idx)
+                                    .and_then(|b| b.as_ref())
+                                    .cloned()
+                                    .unwrap_or_else(|| self.identity_bone_buffer.clone())
+                            )
                         ],
                         []
                     ).unwrap());
