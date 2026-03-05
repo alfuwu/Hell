@@ -499,14 +499,15 @@ impl Renderer {
                 let model = Matrix4f::transform(&object.position, &object.rotation, &object.scale, &object.pivot);
 
                 if let Some(armature) = &object.mesh.armature {
-                    if object.bone_buffers.len() != FRAMES_IN_FLIGHT {
+                    if object.bone_buffers.len() != FRAMES_IN_FLIGHT || armature.bones_changed {
                         object.bone_buffers = (0..FRAMES_IN_FLIGHT).map(|_| {
                             Some(Renderer::create_buffer(
                                 self.mem_alloc.clone(),
-                                vec![[[0.0; 4]; 4]; armature.bones.len()],
+                                vec![[[0.0; 4]; 4]; armature.bones().len()],
                                 BufferUsage::STORAGE_BUFFER
                             ))
                         }).collect();
+                        //armature.bones_changed = false;
                     }
 
                     let matrices = armature.evaluate(&object.animation_layers);

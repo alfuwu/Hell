@@ -3,7 +3,7 @@ use crate::util::matrices::Matrix4f;
 use crate::util::quaternion::Quaternionf;
 use crate::util::vectors::Vector3f;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Bone {
     pub name: String,
     pub parent: Option<usize>,
@@ -11,16 +11,26 @@ pub struct Bone {
     pub local_rest: Matrix4f
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Armature {
-    pub bones: Vec<Bone>,
-    pub animations: Vec<Animation>
+    bones: Vec<Bone>,
+    pub animations: Vec<Animation>,
+    pub bones_changed: bool
 }
 impl Armature {
     pub fn new() -> Self {
-        Self { bones: vec![], animations: vec![] }
+        Self { bones: vec![], animations: vec![], bones_changed: false }
     }
 
+    pub fn bones(&self) -> &[Bone] {
+        &self.bones
+    }
+    
+    pub fn add_bone(&mut self, bone: Bone) {
+        self.bones.push(bone);
+        //self.bones_changed = true;
+    }
+    
     pub fn evaluate(&self, layers: &[AnimationLayer]) -> Vec<Matrix4f> {
         let bone_count = self.bones.len();
 
@@ -43,7 +53,6 @@ impl Armature {
 
         // blend bone transforms across all active layers by normalized weight
         let blended: Vec<BoneTransformation> = (0..bone_count).map(|bone_idx| {
-            let bone_name = &self.bones[bone_idx].name;
             let mut translation = Vector3f::ZERO;
             let mut rotation = Quaternionf::IDENTITY;
             let mut scale = Vector3f::ZERO;
@@ -51,7 +60,7 @@ impl Armature {
             for (weight, transforms) in &active {
                 let normalized = weight / total_weight;
                 // fallback to rest transform if bone is missing from this animation's keyframe
-                if let Some(t) = transforms.iter().find(|t| &t.bone == bone_name) {
+                if let Some(t) = transforms.iter().find(|t| t.bone == bone_idx) {
                     translation += t.translation * normalized;
                     rotation += t.rotation * normalized;
                     scale += t.scale * normalized;
@@ -61,7 +70,7 @@ impl Armature {
                 }
             }
 
-            BoneTransformation::new(bone_name.clone(), translation, rotation, scale)
+            BoneTransformation::new(bone_idx, translation, rotation, scale)
         }).collect();
 
         let local_matrices: Vec<Matrix4f> = self.bones.iter().zip(blended.iter())

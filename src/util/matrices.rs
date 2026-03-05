@@ -2,7 +2,7 @@ use crate::util::vectors::Vector3f;
 use std::ops::Mul;
 use crate::util::quaternion::Quaternionf;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Matrix4f {
     pub m: [[f32; 4]; 4]
 }

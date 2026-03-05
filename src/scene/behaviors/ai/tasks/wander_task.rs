@@ -92,6 +92,10 @@ impl Task for WanderTask {
         let yaw = dir.x.atan2(dir.z);
         object.set_rotation(Quaternionf::from_euler(0.0, yaw, 0.0));
 
+        if should_hop {
+            object.play_animation("Boing");
+        }
+
         if let Some(b) = object.behavior.as_mut() {
             if let Some(p) = b.as_physics_mut() {
                 p.velocity.x = dir.x * WANDER_SPEED;

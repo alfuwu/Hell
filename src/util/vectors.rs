@@ -10,7 +10,7 @@ pub enum Axis {
     W
 }
 
-#[derive(Clone, Default, Copy, PartialEq)]
+#[derive(Clone, Default, Copy, PartialEq, Debug)]
 pub struct Vector3f {
     pub x: f32,
     pub y: f32,

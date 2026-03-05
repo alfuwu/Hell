@@ -3,7 +3,7 @@ use std::f32::consts::FRAC_PI_2;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Quaternionf {
     pub x: f32,
     pub y: f32,

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::path::Path;
 use std::ptr::null_mut;
 use std::sync::Arc;
 use std::time::Instant;
@@ -239,6 +241,9 @@ impl Application {
             Vector3f::uniform(10.0)
         ).with_collider(ObjectCollider::new_mesh(true)));
 
+        let cow = Arc::new(Mesh::from_mod(&mut File::open(Path::new("cow.mod")).unwrap()).unwrap());
+        //println!("{:?}", cow.armature.as_ref().unwrap().animations);
+
         self.scene.add_object(Object::new(
             Arc::new(Mesh::cube(None)),
             Vector3f::new(0.0, 100.0, 0.0),
@@ -254,7 +259,7 @@ impl Application {
         ).with_behavior(Box::new(TidalBehavior::new(1.0, 0.1))));
 
         let wanderer = Object::new(
-            Arc::new(Mesh::capsule(16, 16, None)),
+            cow,
             Vector3f::new(0.0, 10.0, 0.0),
             Quaternionf::IDENTITY,
             Vector3f::uniform(1.0)

@@ -1,14 +1,13 @@
-use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use crate::app::Application;
-use crate::rendering::animation::armature::Armature;
+use crate::rendering::animation::animation::{Animation, BoneTransformation, Keyframe};
+use crate::rendering::animation::armature::{Armature, Bone};
 use crate::rendering::renderer::Renderer;
 use crate::rendering::texture::{SampleType, Texture};
 use crate::rendering::vertex::Vertex;
-use crate::util::binary::{
-    read_byte, read_f32, read_i32, read_u32, write_byte, write_f32, write_fixed_string, write_i32,
-    write_u32,
-};
+use crate::util::binary::{read_byte, read_f32, read_matrix4f, read_quaternionf, read_string, read_u16, read_u32, read_vector3f, write_byte, write_f32, write_fixed_string, write_matrix4f,
+                          write_quaternionf, write_string, write_u16, write_u32, write_vector3f};
 use crate::util::vectors::Vector3f;
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Error, ErrorKind, Read, Write};
 use vulkano::buffer::{BufferUsage, Subbuffer};
@@ -458,6 +457,7 @@ impl Mesh {
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
         let mut texture: Option<Texture> = None;
+        let mut armature: Option<Armature> = None;
 
         let mut header_buf = [0u8; 8];
         file.read_exact(&mut header_buf)?;
@@ -472,7 +472,7 @@ impl Mesh {
         let mut reader = BufReader::new(Decoder::new(file)?);
         let mod_type = read_byte(&mut reader)?;
 
-        let verts = read_i32(&mut reader)?;
+        let verts = read_u32(&mut reader)?;
         for _ in 0..verts {
             vertices.push(Vertex::vertex(
                 read_f32(&mut reader)?,
@@ -483,21 +483,21 @@ impl Mesh {
 
         // bit 1 = mesh has indices
         if mod_type & 0x1 != 0 {
-            let inds = read_i32(&mut reader)? as usize;
+            let inds = read_u32(&mut reader)? as usize;
             for _ in 0..inds {
                 indices.push(read_u32(&mut reader)?);
             }
         }
         // bit 2 = mesh has uvs
         if mod_type & 0x2 != 0 {
-            let uvs = read_i32(&mut reader)?.min(verts) as usize;
+            let uvs = read_u32(&mut reader)?.min(verts) as usize;
             for i in 0..uvs {
                 vertices[i].uv = [read_f32(&mut reader)?, read_f32(&mut reader)?];
             }
         }
         // bit 3 = mesh has baked normals
         if mod_type & 0x4 != 0 {
-            let normals = read_i32(&mut reader)?.min(verts) as usize;
+            let normals = read_u32(&mut reader)?.min(verts) as usize;
             for i in 0..normals {
                 vertices[i].normal = [
                     read_f32(&mut reader)?,
@@ -541,10 +541,53 @@ impl Mesh {
         }
         // bit 6 = mesh has vertex weights & an armature
         if mod_type & 0x20 != 0 {
-            
+            let mut a = Armature::new();
+            let bones = read_u16(&mut reader)? as usize;
+            for _ in 0..bones {
+                a.add_bone(Bone {
+                    name: read_string(&mut reader)?,
+                    parent: match read_u16(&mut reader)? {
+                        0 => None,
+                        n => Some((n - 1) as usize)
+                    },
+                    inverse_bind_matrix: read_matrix4f(&mut reader)?,
+                    local_rest: read_matrix4f(&mut reader)?
+                })
+            }
+
+            let animations = read_u16(&mut reader)? as usize;
+            for _ in 0..animations {
+                let mut anim = Animation::new(read_string(&mut reader)?, read_byte(&mut reader)?.into());
+                let keyframes = read_u32(&mut reader)? as usize;
+                for _ in 0..keyframes {
+                    let pos = read_f32(&mut reader)?;
+                    let mut keyframe = Keyframe::new();
+                    let trans = read_u16(&mut reader)?;
+                    for _ in 0..trans {
+                        keyframe.transformations.push(BoneTransformation {
+                            bone: read_u16(&mut reader)? as usize,
+                            translation: read_vector3f(&mut reader)?,
+                            rotation: read_quaternionf(&mut reader)?,
+                            scale: read_vector3f(&mut reader)?
+                        })
+                    }
+                    anim.add_keyframe(pos, keyframe);
+                }
+                a.animations.push(anim);
+            }
+
+            for v in 0..verts {
+                let indices = read_byte(&mut reader)? as usize;
+                for i in 0..indices {
+                    let vert = &mut vertices[v as usize];
+                    vert.bone_indices[i] = read_u32(&mut reader)?;
+                    vert.bone_weights[i] = read_f32(&mut reader)?;
+                }
+            }
+            armature = Some(a);
         }
 
-        Ok(Self::new(
+        let mut mesh = Self::new(
             vertices,
             if indices.len() > 0 {
                 Some(indices)
@@ -552,10 +595,12 @@ impl Mesh {
                 None
             },
             texture
-        ))
+        );
+        mesh.armature = armature;
+        Ok(mesh)
     }
 
-    pub fn save(&self, file: File, bake_normals: bool, bake_texture: bool) -> Result<(), Error> {
+    pub fn save(&self, file: File, bake_normals: bool, bake_texture: bool, bake_armature: bool) -> Result<(), Error> {
         let vertices: Vec<Vertex> = self.vertex_buffer.read().unwrap().to_vec();
         let indices: Option<Vec<u32>> = self.index_buffer.as_ref()
             .map(|b| b.read().unwrap().to_vec());
@@ -567,12 +612,14 @@ impl Mesh {
         );
         let has_texture = bake_texture && self.texture.is_some();
         let has_depth = has_texture && self.texture.as_ref().unwrap().depth() > 1;
+        let has_armature = bake_armature && self.armature.is_some();
 
         let mod_type: u8 = (has_indices as u8)
             | ((has_uvs as u8) << 1)
             | ((has_normals as u8) << 2)
             | ((has_texture as u8) << 3)
-            | ((has_depth as u8) << 4);
+            | ((has_depth as u8) << 4)
+            | ((has_armature as u8) << 5);
 
         let mut plain_writer = BufWriter::new(file);
         write_fixed_string(&mut plain_writer, "HYLEUS_M")?;
@@ -580,7 +627,7 @@ impl Mesh {
         write_byte(&mut writer, mod_type)?;
 
         // write vertex positions
-        write_i32(&mut writer, vertices.len() as i32)?;
+        write_u32(&mut writer, vertices.len() as u32)?;
         for v in &vertices {
             write_f32(&mut writer, v.position[0])?;
             write_f32(&mut writer, v.position[1])?;
@@ -588,14 +635,14 @@ impl Mesh {
         }
         // write indices
         if let Some(ref inds) = indices {
-            write_i32(&mut writer, inds.len() as i32)?;
+            write_u32(&mut writer, inds.len() as u32)?;
             for &idx in inds {
                 write_u32(&mut writer, idx)?;
             }
         }
         // write UVs
         if has_uvs {
-            write_i32(&mut writer, vertices.len() as i32)?;
+            write_u32(&mut writer, vertices.len() as u32)?;
             for v in &vertices {
                 write_f32(&mut writer, v.uv[0])?;
                 write_f32(&mut writer, v.uv[1])?;
@@ -603,13 +650,14 @@ impl Mesh {
         }
         // write normals
         if has_normals {
-            write_i32(&mut writer, vertices.len() as i32)?;
+            write_u32(&mut writer, vertices.len() as u32)?;
             for v in &vertices {
                 write_f32(&mut writer, v.normal[0])?;
                 write_f32(&mut writer, v.normal[1])?;
                 write_f32(&mut writer, v.normal[2])?;
             }
         }
+        // bake texture
         if has_texture {
             let texture = self.texture.as_ref().unwrap();
             write_byte(&mut writer, texture.sample_type.clone() as u8)?;
@@ -621,6 +669,50 @@ impl Mesh {
 
             let pixels: Vec<u8> = texture.read_pixels().unwrap();
             writer.write_all(&pixels)?;
+        }
+        // bake mesh rig & animations
+        if has_armature {
+            let armature = self.armature.as_ref().unwrap();
+            let bones = armature.bones();
+            write_u16(&mut writer, bones.len() as u16)?;
+            for bone in bones {
+                write_string(&mut writer, &bone.name)?;
+                if let Some(parent) = bone.parent {
+                    write_u16(&mut writer, (parent as u16) | (1 << 15))?;
+                } else {
+                    write_byte(&mut writer, 0)?;
+                }
+                write_matrix4f(&mut writer, bone.inverse_bind_matrix)?;
+                write_matrix4f(&mut writer, bone.local_rest)?;
+            }
+
+            write_u16(&mut writer, armature.animations.len() as u16)?;
+            for animation in &armature.animations {
+                write_string(&mut writer, &animation.name)?;
+                write_byte(&mut writer, animation.interpolation_type.clone() as u8)?;
+                let keyframes = animation.keyframes();
+                write_u32(&mut writer, keyframes.len() as u32)?;
+                for keyframe in keyframes {
+                    write_f32(&mut writer, keyframe.0)?;
+                    let trans = &keyframe.1.transformations;
+                    write_u16(&mut writer, trans.len() as u16)?;
+                    for trs in trans {
+                        write_u16(&mut writer, trs.bone as u16)?;
+                        write_vector3f(&mut writer, trs.translation)?;
+                        write_quaternionf(&mut writer, trs.rotation)?;
+                        write_vector3f(&mut writer, trs.scale)?;
+                    }
+                }
+            }
+
+            for v in vertices {
+                let count = v.bone_indices.iter().filter(|idx| **idx < u32::MAX).count();
+                write_byte(&mut writer, count as u8)?;
+                for i in 0..count {
+                    write_u32(&mut writer, v.bone_indices[i])?;
+                    write_f32(&mut writer, v.bone_weights[i])?;
+                }
+            }
         }
         Ok(())
     }
