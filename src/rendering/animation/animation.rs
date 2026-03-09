@@ -38,12 +38,8 @@ impl Animation {
 
     pub fn add_keyframe(&mut self, time: f32, frame: Keyframe) {
         // start from the right as keyframes *SHOULD* be ordered sequentially
-        let idx = self.keyframes.iter().rposition(|kvp| kvp.0 < time);
-        if let Some(idx) = idx {
-            self.keyframes.insert(idx + 1, (time, frame));
-        } else {
-            self.keyframes.push((time, frame)); // no keyframe earlier than the provided one was found, so push to end of vector
-        }
+        let idx = self.keyframes.iter().rposition(|kvp| kvp.0 < time).and_then(|idx| Some(idx + 1)).unwrap_or(0);
+        self.keyframes.insert(idx, (time, frame));
     }
 
     pub fn duration(&self) -> f32 {

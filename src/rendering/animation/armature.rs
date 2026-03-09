@@ -73,7 +73,22 @@ impl Armature {
             BoneTransformation::new(bone_idx, translation, rotation, scale)
         }).collect();
 
-        let local_matrices: Vec<Matrix4f> = self.bones.iter().zip(blended.iter())
+        self.bones.iter().zip(blended.iter())
+            .map(|(bone, t)| {
+                let anim_local = Matrix4f::transform(&t.translation, &t.rotation, &t.scale, &Vector3f::ZERO);
+
+                let bind_world = bone.inverse_bind_matrix.inverse();
+                if let Some(bind_world) = bind_world {
+                    Some(bind_world * anim_local * bone.inverse_bind_matrix)
+                } else {
+                    None
+                }
+            })
+            .filter(|b| b.is_some())
+            .map(|b| b.unwrap())
+            .collect()
+
+        /*let local_matrices: Vec<Matrix4f> = self.bones.iter().zip(blended.iter())
             .map(|(_, t)| {
                 Matrix4f::translation(t.translation)
                     * Matrix4f::rotation(&t.rotation)
@@ -92,6 +107,6 @@ impl Armature {
         // world animated * inverse bind
         world_matrices.iter().zip(self.bones.iter())
             .map(|(world, bone)| *world * bone.inverse_bind_matrix)
-            .collect()
+            .collect()*/
     }
 }
