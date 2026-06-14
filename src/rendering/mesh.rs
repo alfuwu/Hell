@@ -680,7 +680,7 @@ impl Mesh {
                 if let Some(parent) = bone.parent {
                     write_u16(&mut writer, (parent as u16) | (1 << 15))?;
                 } else {
-                    write_byte(&mut writer, 0)?;
+                    write_u16(&mut writer, 0)?;
                 }
                 write_matrix4f(&mut writer, bone.inverse_bind_matrix)?;
                 write_matrix4f(&mut writer, bone.local_rest)?;

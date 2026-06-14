@@ -242,6 +242,7 @@ impl Application {
         ).with_collider(ObjectCollider::new_mesh(true)));
 
         let cow = Arc::new(Mesh::from_mod(&mut File::open(Path::new("cow.mod")).unwrap()).unwrap());
+        let test_anim = Arc::new(Mesh::from_mod(&mut File::open(Path::new("test_anim.mod")).unwrap()).unwrap());
         //println!("{:?}", cow.armature.as_ref().unwrap().animations);
 
         self.scene.add_object(Object::new(
@@ -257,6 +258,15 @@ impl Application {
             Quaternionf::IDENTITY,
             Vector3f::uniform(200.0)
         ).with_behavior(Box::new(TidalBehavior::new(1.0, 0.1))));
+
+        let mut obj = Object::new(
+            test_anim,
+            Vector3f::new(0.0, 0.0, -10.0),
+            Quaternionf::IDENTITY,
+            Vector3f::uniform(1.0)
+        );
+        obj.play_animation("Animation");
+        self.scene.add_object(obj);
 
         let wanderer = Object::new(
             cow,

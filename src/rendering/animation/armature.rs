@@ -70,7 +70,7 @@ impl Armature {
                 }
             }
 
-            BoneTransformation::new(bone_idx, translation, rotation, scale)
+            BoneTransformation::new(bone_idx, translation, rotation.normalize(), scale)
         }).collect();
 
         self.bones.iter().zip(blended.iter())
