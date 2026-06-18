@@ -18,6 +18,11 @@ pub fn read_byte<R: Read>(buf: &mut BufReader<R>) -> Result<u8, Error> {
     buf.read_exact(out)?;
     Ok(out[0])
 }
+pub fn read_bytes<R: Read>(buf: &mut BufReader<R>, size: usize) -> Result<Vec<u8>, Error> {
+    let mut out = vec![0; size];
+    buf.read_exact(&mut out)?;
+    Ok(out)
+}
 pub fn read_u16<R: Read>(buf: &mut BufReader<R>) -> Result<u16, Error> {
     let out = &mut [0; 2];
     buf.read_exact(out)?;
@@ -67,14 +72,19 @@ pub fn read_matrix3f<R: Read>(buf: &mut BufReader<R>) -> Result<Matrix3f, Error>
 }
 pub fn read_matrix4f<R: Read>(buf: &mut BufReader<R>) -> Result<Matrix4f, Error> {
     let mut m = [[0.0; 4]; 4];
-    for i in 0..16 {
-        m[i/4][i%4] = read_f32(buf)?;
+    for col in 0..4 {
+        for row in 0..4 {
+            m[row][col] = read_f32(buf)?;
+        }
     }
     Ok(Matrix4f::new(m))
 }
 
 pub fn write_byte<W: Write>(writer: &mut BufWriter<W>, value: u8) -> Result<(), Error> {
     writer.write_all(&[value])
+}
+pub fn write_bytes<W: Write>(writer: &mut BufWriter<W>, value: &[u8]) -> Result<(), Error> {
+    writer.write_all(value)
 }
 pub fn write_u16<W: Write>(writer: &mut BufWriter<W>, value: u16) -> Result<(), Error> {
     writer.write_all(&value.to_le_bytes())
@@ -118,8 +128,10 @@ pub fn write_matrix3f<W: Write>(writer: &mut BufWriter<W>, value: Matrix3f) -> R
     Ok(())
 }
 pub fn write_matrix4f<W: Write>(writer: &mut BufWriter<W>, value: Matrix4f) -> Result<(), Error> {
-    for i in 0..16 {
-        write_f32(writer, value.m[i/4][i%4])?;
+    for col in 0..4 {
+        for row in 0..4 {
+            write_f32(writer, value.m[row][col])?;
+        }
     }
     Ok(())
 }

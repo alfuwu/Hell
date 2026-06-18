@@ -4,8 +4,7 @@ use crate::rendering::animation::armature::{Armature, Bone};
 use crate::rendering::renderer::Renderer;
 use crate::rendering::texture::{SampleType, Texture};
 use crate::rendering::vertex::Vertex;
-use crate::util::binary::{read_byte, read_f32, read_matrix4f, read_quaternionf, read_string, read_u16, read_u32, read_vector3f, write_byte, write_f32, write_fixed_string, write_matrix4f,
-                          write_quaternionf, write_string, write_u16, write_u32, write_vector3f};
+use crate::util::binary::{read_byte, read_f32, read_matrix4f, read_quaternionf, read_string, read_u16, read_u32, read_vector3f, write_byte, write_bytes, write_f32, write_matrix4f, write_quaternionf, write_string, write_u16, write_u32, write_vector3f};
 use crate::util::vectors::Vector3f;
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::fs::File;
@@ -459,11 +458,10 @@ impl Mesh {
         let mut texture: Option<Texture> = None;
         let mut armature: Option<Armature> = None;
 
-        let mut header_buf = [0u8; 8];
+        let mut header_buf = [0u8; 13];
         file.read_exact(&mut header_buf)?;
-        let header = String::from_utf8(header_buf.to_vec()).unwrap();
-        if header != "HYLEUS_M" {
-            eprintln!("Corrupted/invalid mod header: {}. Not continuing.", header);
+        if header_buf != *b"HYLEUS_M\x00\x00\x69\x42\x00" {
+            eprintln!("Corrupted/invalid mod header: {}. Not continuing.", String::from_utf8_lossy(&header_buf));
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "Corrupted/invalid mod header",
@@ -622,7 +620,7 @@ impl Mesh {
             | ((has_armature as u8) << 5);
 
         let mut plain_writer = BufWriter::new(file);
-        write_fixed_string(&mut plain_writer, "HYLEUS_M")?;
+        write_bytes(&mut plain_writer, b"HYLEUS_M\x00\x00\x69\x42\x00")?;
         let mut writer = BufWriter::new(Encoder::new(plain_writer.into_inner()?, 3)?.auto_finish());
         write_byte(&mut writer, mod_type)?;
 
@@ -678,7 +676,7 @@ impl Mesh {
             for bone in bones {
                 write_string(&mut writer, &bone.name)?;
                 if let Some(parent) = bone.parent {
-                    write_u16(&mut writer, (parent as u16) | (1 << 15))?;
+                    write_u16(&mut writer, parent as u16 + 1)?;
                 } else {
                     write_u16(&mut writer, 0)?;
                 }

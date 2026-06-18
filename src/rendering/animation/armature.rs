@@ -30,11 +30,10 @@ impl Armature {
         self.bones.push(bone);
         //self.bones_changed = true;
     }
-    
+
     pub fn evaluate(&self, layers: &[AnimationLayer]) -> Vec<Matrix4f> {
         let bone_count = self.bones.len();
 
-        // filter to layers that have a matching animation and non-zero weight
         let active: Vec<(f32, Vec<BoneTransformation>)> = layers.iter()
             .filter(|l| l.weight > 0.0)
             .filter_map(|l| {
@@ -44,14 +43,12 @@ impl Armature {
             })
             .collect();
 
-        // no active animation, identity skinning matrices leave vertices unchanged
         if active.is_empty() {
             return vec![Matrix4f::identity(); bone_count];
         }
 
         let total_weight: f32 = active.iter().map(|(w, _)| w).sum();
 
-        // blend bone transforms across all active layers by normalized weight
         let blended: Vec<BoneTransformation> = (0..bone_count).map(|bone_idx| {
             let mut translation = Vector3f::ZERO;
             let mut rotation = Quaternionf::IDENTITY;
@@ -59,13 +56,12 @@ impl Armature {
 
             for (weight, transforms) in &active {
                 let normalized = weight / total_weight;
-                // fallback to rest transform if bone is missing from this animation's keyframe
                 if let Some(t) = transforms.iter().find(|t| t.bone == bone_idx) {
                     translation += t.translation * normalized;
-                    rotation += t.rotation * normalized;
+                    rotation  += t.rotation * normalized;
                     scale += t.scale * normalized;
                 } else {
-                    // bone not animated in this layer; treat as identity contribution
+                    rotation += Quaternionf::IDENTITY * normalized;
                     scale += Vector3f::ONE * normalized;
                 }
             }
@@ -73,40 +69,25 @@ impl Armature {
             BoneTransformation::new(bone_idx, translation, rotation.normalize(), scale)
         }).collect();
 
-        self.bones.iter().zip(blended.iter())
-            .map(|(bone, t)| {
-                let anim_local = Matrix4f::transform(&t.translation, &t.rotation, &t.scale, &Vector3f::ZERO);
-
-                let bind_world = bone.inverse_bind_matrix.inverse();
-                if let Some(bind_world) = bind_world {
-                    Some(bind_world * anim_local * bone.inverse_bind_matrix)
-                } else {
-                    None
-                }
-            })
-            .filter(|b| b.is_some())
-            .map(|b| b.unwrap())
-            .collect()
-
-        /*let local_matrices: Vec<Matrix4f> = self.bones.iter().zip(blended.iter())
-            .map(|(_, t)| {
+        let anim_deltas: Vec<Matrix4f> = blended.iter()
+            .map(|t| {
                 Matrix4f::translation(t.translation)
                     * Matrix4f::rotation(&t.rotation)
                     * Matrix4f::scale(t.scale)
             })
             .collect();
 
-        // accum parent transforms (bones must be sorted parent-before-child)
-        let mut world_matrices = local_matrices.clone();
+        let mut world_animated = vec![Matrix4f::IDENTITY; bone_count];
         for i in 0..bone_count {
-            if let Some(parent_idx) = self.bones[i].parent {
-                world_matrices[i] = world_matrices[parent_idx] * local_matrices[i];
-            }
+            let local_pose = self.bones[i].local_rest * anim_deltas[i];
+            world_animated[i] = match self.bones[i].parent {
+                Some(p) => world_animated[p] * local_pose,
+                None => local_pose
+            };
         }
 
-        // world animated * inverse bind
-        world_matrices.iter().zip(self.bones.iter())
+        world_animated.iter().zip(self.bones.iter())
             .map(|(world, bone)| *world * bone.inverse_bind_matrix)
-            .collect()*/
+            .collect()
     }
 }
